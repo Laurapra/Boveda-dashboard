@@ -1,6 +1,6 @@
 // src/hooks/useTransactions.ts
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "../lib/supabase";
+//import { supabase } from "../lib/supabase";
 import type { Transaction, PaymentMethod, TxStatus } from "../types";
 
 interface Filters {

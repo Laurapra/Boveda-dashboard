@@ -1,7 +1,7 @@
 // src/pages/Dispersion.tsx
 import React, { useState, useRef } from "react";
 import Papa from "papaparse";
-import { useAuthStore } from "../store/authStore";
+//import { useAuthStore } from "../store/authStore";
 import type { ToastType } from "../types";
 
 // ── Tipos internos ───────────────────────────────────────────────
