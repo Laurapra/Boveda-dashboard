@@ -1,7 +1,7 @@
 import React from "react";
 import { useAuthStore } from "../../store/authStore";
 
-type ViewKey = "home" | "recaudo" | "dispersion" | "cuenta";
+type ViewKey = "home" | "recaudo" | "dispersion" | "cuenta" | "cuentas-bancarias" | "kyc";
 
 interface Props {
   active: ViewKey;
@@ -13,6 +13,8 @@ const NAV = [
   { key: "recaudo"    as ViewKey, label: "Recaudo",          badge: 24   },
   { key: "dispersion" as ViewKey, label: "Dispersión",       badge: null },
   { key: "cuenta"     as ViewKey, label: "Estado de Cuenta", badge: null },
+  { key: "cuentas-bancarias" as ViewKey, label: "Cuentas Bancarias", badge: null},
+  { key: "kyc" as ViewKey, label: "Verificación KYC", badge: null },
 ];
 
 export const Sidebar: React.FC<Props> = ({ active, onNav }) => {

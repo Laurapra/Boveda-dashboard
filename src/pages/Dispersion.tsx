@@ -3,6 +3,7 @@ import React, { useState, useRef } from "react";
 import Papa from "papaparse";
 //import { useAuthStore } from "../store/authStore";
 import type { ToastType } from "../types";
+import {lookupBrebKey, sendPayoutBreb} from "../lib/bepayClient";
 
 // ── Tipos internos ───────────────────────────────────────────────
 interface ValidatedRow {
@@ -15,15 +16,13 @@ interface ValidatedRow {
   errors: string[];
 }
 
-// ── Props compartidas entre los dos componentes ──────────────────
+
 interface SharedProps {
   fmt: (n: number) => string;
   onToast: (type: ToastType, title: string, msg: string) => void;
 }
 
-// ================================================================
-//  TAB INDIVIDUAL
-// ================================================================
+
 function IndividualTab({ fmt, onToast }: SharedProps) {
   const [key, setKey]                   = useState("");
   const [amount, setAmount]             = useState("");
@@ -37,19 +36,27 @@ function IndividualTab({ fmt, onToast }: SharedProps) {
   ];
 
   const handleKeyChange = (v: string) => {
-    setKey(v);
-    setResolvedName(null);
-    setLookupState("idle");
-    if (timerRef.current) clearTimeout(timerRef.current);
-    if (v.trim().length < 5) return;
+  setKey(v);
+  setResolvedName(null);
+  setLookupState("idle");
+  if (timerRef.current) clearTimeout(timerRef.current);
+  if (v.trim().length < 5) return;
 
-    setLookupState("loading");
-    timerRef.current = setTimeout(() => {
-      const name = NAMES[Math.floor(Math.random() * NAMES.length)];
-      setResolvedName(name);
-      setLookupState("ok");
-    }, 1100);
-  };
+  setLookupState("loading");
+  timerRef.current = setTimeout(async () => {
+    try {
+      const res = await lookupBrebKey(v.trim());
+      if (res.success && res.data?.name) {
+        setResolvedName(res.data.name);
+        setLookupState("ok");
+      } else {
+        setLookupState("error" as any);
+      }
+    } catch {
+      setLookupState("error" as any);
+    }
+  }, 600);
+};
 
   const handleAmountChange = (v: string) => {
     const clean = v.replace(/\D/g, "");
@@ -61,11 +68,21 @@ function IndividualTab({ fmt, onToast }: SharedProps) {
   const total     = rawAmount + fee;
   const canSend   = rawAmount > 0 && resolvedName !== null;
 
-  const handleSend = () => {
-    if (!canSend) return;
-    onToast("ok", "Dispersión enviada", `${fmt(rawAmount)} → ${resolvedName}`);
+  const handleSend = async () => {
+  if (!canSend || !resolvedName) return;
+  setSending(true);
+  try {
+    const reference = `BOV-${Date.now()}`;
+    await sendPayoutBreb(key, rawAmount, "Dispersión Bóveda", reference);
+    onToast("ok", "Dispersión enviada a Bepay", `${fmt(rawAmount)} → ${resolvedName}`);
     setKey(""); setAmount(""); setResolvedName(null); setLookupState("idle");
-  };
+  } catch (err: any) {
+    onToast("error", "Error en dispersión", err.message);
+  } finally {
+    setSending(false);
+  }
+};
+
 
   const inputStyle: React.CSSProperties = {
     width: "100%", padding: "10px 12px",

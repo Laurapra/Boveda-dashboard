@@ -14,9 +14,11 @@ import { RecaudoView } from "./pages/Recaudo";
 import { DispersionView } from "./pages/Dispersion";
 import { EstadoCuentaView } from "./pages/EstadoCuenta";
 import { Sidebar } from "./components/layout/SideBar.tsx";
+import { BankAccountsView } from "./pages/BankAccounts";
+import { KycView } from "./pages/Kyc";
 
 type AuthScreen = "login" | "register";
-type ViewKey = "home" | "recaudo" | "dispersion" | "cuenta";
+type ViewKey = "home" | "recaudo" | "dispersion" | "cuenta" | "cuentas-bancarias" | "kyc";
 
 // Formateador de pesos colombianos — se crea una vez y se pasa hacia abajo
 const COP = new Intl.NumberFormat("es-CO", {
@@ -121,6 +123,8 @@ export default function App() {
           {view === "recaudo" && <RecaudoView fmt={COP.format.bind(COP)} onToast={addToast} />}
           {view === "dispersion" && <DispersionView fmt={COP.format.bind(COP)} onToast={addToast} />}
           {view === "cuenta" && <EstadoCuentaView fmt={COP.format.bind(COP)} onToast={addToast} />}
+          {view === "kyc" && <KycView fmt={COP.format.bind(COP)} onToast={addToast} />}
+          {view === "cuentas-bancarias" && <BankAccountsView onToast={addToast} />}
         </main>
       </div>
 

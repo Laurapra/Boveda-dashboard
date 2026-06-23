@@ -5,6 +5,7 @@ import { Input } from "./ui/Input";
 import { supabase } from "../lib/supabase";
 import { useAuthStore } from "../store/authStore";
 import type { ToastType } from "../types";
+import {createPaymentLink} from "../lib/bepayClient";
 
 interface Props {
   isOpen: boolean;
@@ -52,37 +53,35 @@ export const CreateLinkModal: React.FC<Props> = ({ isOpen, onClose, onToast }) =
   };
 
   const handleGenerate = async () => {
-    if (!concept.trim()) return;
-    setLoading(true);
+  if (!concept.trim()) return;
+  setLoading(true);
 
-    try {
-      const code = generateCode();
-      const url  = `https://pay.boveda.co/l/${code}`;
+  try {
+    // Llama a Bepay real
+    const response = await createPaymentLink(amount ?? 0, concept.trim());
+    const { ide, link, qr } = response.data;
 
-      // Guardar el link en Supabase
-      // (necesitarás crear la tabla payment_links — SQL abajo)
-      const { error } = await supabase.from("payment_links").insert({
-        user_id:    user?.id,
-        code,
-        url,
-        amount,
-        concept:    concept.trim(),
-        expiry,
-        methods:    JSON.stringify(methods),
-        status:     "active",
-      });
+    // Guarda también en tu tabla de Supabase para historial
+    await supabase.from("payment_links").insert({
+      user_id: user?.id,
+      code:    ide,
+      url:     link,
+      amount,
+      concept: concept.trim(),
+      expiry,
+      methods: JSON.stringify(methods),
+      status:  "active",
+    });
 
-      if (error) throw error;
-
-      setResult({ url, code, amount, concept: concept.trim() });
-      setStep("result");
-      onToast("ok", "Link creado", `Cobro ${amount ? `$${amount.toLocaleString("es-CO")}` : "abierto"} listo`);
-    } catch (err: any) {
-      onToast("error", "Error", err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+    setResult({ url: link, code: ide, amount, concept: concept.trim() });
+    setStep("result");
+    onToast("ok", "Link creado en Bepay", link);
+  } catch (err: any) {
+    onToast("error", "Error Bepay", err.message);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleCopy = async () => {
     if (!result) return;
