@@ -29,6 +29,7 @@ function IndividualTab({ fmt, onToast }: SharedProps) {
   const [resolvedName, setResolvedName] = useState<string | null>(null);
   const [lookupState, setLookupState]   = useState<"idle" | "loading" | "ok">("idle");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [sending, setSending] = useState(false);
 
   const NAMES = [
     "MARÍA F***** GÓMEZ", "JUAN D***** RAMÍREZ",
@@ -46,17 +47,22 @@ function IndividualTab({ fmt, onToast }: SharedProps) {
   timerRef.current = setTimeout(async () => {
     try {
       const res = await lookupBrebKey(v.trim());
-      if (res.success && res.data?.name) {
+      console.log("lookup respuesta:", res);
+
+      if (res?.success && res.data?.name) {
         setResolvedName(res.data.name);
         setLookupState("ok");
       } else {
-        setLookupState("error" as any);
+        setLookupState("idle");
+        setResolvedName(null);
       }
-    } catch {
-      setLookupState("error" as any);
+    } catch (err) {
+      console.error("lookup error:", err);
+      setLookupState("idle");
     }
   }, 600);
 };
+
 
   const handleAmountChange = (v: string) => {
     const clean = v.replace(/\D/g, "");
@@ -70,11 +76,18 @@ function IndividualTab({ fmt, onToast }: SharedProps) {
 
   const handleSend = async () => {
   if (!canSend || !resolvedName) return;
-  setSending(true);
+  setSending(true); // agrega este estado si no lo tienes: const [sending, setSending] = useState(false);
+
   try {
     const reference = `BOV-${Date.now()}`;
-    await sendPayoutBreb(key, rawAmount, "Dispersión Bóveda", reference);
-    onToast("ok", "Dispersión enviada a Bepay", `${fmt(rawAmount)} → ${resolvedName}`);
+    const res = await sendPayoutBreb(key, rawAmount, "Dispersión Bóveda", reference);
+
+    if (res?.success === false) {
+      onToast("error", "Dispersión rechazada", typeof res.message === "string" ? res.message : JSON.stringify(res.message));
+      return;
+    }
+
+    onToast("ok", "Dispersión enviada", `${fmt(rawAmount)} → ${resolvedName}`);
     setKey(""); setAmount(""); setResolvedName(null); setLookupState("idle");
   } catch (err: any) {
     onToast("error", "Error en dispersión", err.message);

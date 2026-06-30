@@ -35,75 +35,95 @@ serve(async (req) => {
     switch (action) {
 
       // ── Consultar titular de una llave Bre-B ───────────────────
+      // GET /payout/get/{key}
       case "lookup_key": {
         const res = await fetch(
           `${BEPAY_BASE}/payout/get/${encodeURIComponent(payload.key)}`,
           {
             headers: {
               "Authorization": `Bearer ${token}`,
-              "Accept": "application/json",
+              "Content-Type":  "application/json",
+              "Accept":        "application/json",
             },
           }
         );
         result = await res.json();
+        console.log("lookup_key result:", JSON.stringify(result));
         break;
       }
 
       // ── Dispersión Bre-B ───────────────────────────────────────
+      // Estructura real según Bepay: array de "payouts"
       case "payout_breb": {
         const res = await fetch(`${BEPAY_BASE}/payout/breb/send`, {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${token}`,
-            "Content-Type": "application/json",
-            "Accept": "application/json",
+            "Content-Type":  "application/json",
+            "Accept":        "application/json",
           },
           body: JSON.stringify({
-            account_id:  accountId,
-            key:         payload.key,        // llave Bre-B destino
-            amount:      payload.amount,     // monto COP
             description: payload.concept,
-            reference:   payload.reference,
+            account_id:  accountId,
+            payouts: [
+              {
+                key_number:    payload.key,        // ej: "@BE12345678" o "@minegocio"
+                account_value: payload.amount,      // monto en COP
+              },
+            ],
           }),
         });
         result = await res.json();
+        console.log("payout_breb result:", JSON.stringify(result));
         break;
       }
 
-      // ── Dispersión ACH (cuenta bancaria tradicional) ───────────
+      // ── Dispersión ACH (cuenta bancaria) ───────────────────────
       case "payout_ach": {
         const res = await fetch(`${BEPAY_BASE}/payout/ach/send`, {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${token}`,
-            "Content-Type": "application/json",
-            "Accept": "application/json",
+            "Content-Type":  "application/json",
+            "Accept":        "application/json",
           },
           body: JSON.stringify({
             account_id:      accountId,
             bank_code:       payload.bank_code,
             account_number:  payload.account_number,
-            account_type:    payload.account_type,  // "ahorros" | "corriente"
+            account_type:    payload.account_type,
             document_type:   payload.document_type,
             document_number: payload.document_number,
             name:            payload.holder_name,
             amount:          payload.amount,
             description:     payload.concept,
-            reference:       payload.reference,
+            reference:       payload.reference ?? `DISP-${Date.now()}`,
           }),
         });
         result = await res.json();
         break;
       }
 
-      // ── Consultar estado de una dispersión ─────────────────────
+      // ── Códigos de bancos para ACH ──────────────────────────────
+      case "get_bank_codes": {
+        const res = await fetch(`${BEPAY_BASE}/payout/bankCodes`, {
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "Accept":        "application/json",
+          },
+        });
+        result = await res.json();
+        break;
+      }
+
+      // ── Estado de una dispersión ─────────────────────────────────
       case "payout_status": {
         const res = await fetch(
           `${BEPAY_BASE}/payout/status/${payload.payout_id}/${accountId}`,
           {
             headers: {
               "Authorization": `Bearer ${token}`,
-              "Accept": "application/json",
+              "Accept":        "application/json",
             },
           }
         );
@@ -112,9 +132,10 @@ serve(async (req) => {
       }
 
       default:
-        return new Response(JSON.stringify({ error: "Acción no reconocida" }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify({ success: false, error: `Acción '${action}' no reconocida` }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
     }
 
     return new Response(JSON.stringify(result), {
@@ -122,8 +143,10 @@ serve(async (req) => {
     });
 
   } catch (err) {
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.error("[bepay-payouts] ERROR:", err.message);
+    return new Response(
+      JSON.stringify({ success: false, error: err.message }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   }
 });
