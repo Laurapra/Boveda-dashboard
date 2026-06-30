@@ -8,7 +8,6 @@ import { Register } from "./pages/Register";
 import { ToastContainer } from "./components/ui/Toast";
 import { useToast } from "./hooks/useToast";
 
-// Las páginas del dashboard (importarlas directamente por ahora)
 import { HomeView } from "./pages/Home";
 import { RecaudoView } from "./pages/Recaudo";
 import { DispersionView } from "./pages/Dispersion";
@@ -16,9 +15,10 @@ import { EstadoCuentaView } from "./pages/EstadoCuenta";
 import { Sidebar } from "./components/layout/SideBar.tsx";
 import { BankAccountsView } from "./pages/BankAccounts";
 import { KycView } from "./pages/Kyc";
+import { OnboardingView } from "./pages/Onboarding";
 
 type AuthScreen = "login" | "register";
-type ViewKey = "home" | "recaudo" | "dispersion" | "cuenta" | "cuentas-bancarias" | "kyc";
+type ViewKey = "home" | "recaudo" | "dispersion" | "cuenta" | "cuentas-bancarias" | "kyc" | "onboarding";
 
 // Formateador de pesos colombianos — se crea una vez y se pasa hacia abajo
 const COP = new Intl.NumberFormat("es-CO", {
@@ -125,6 +125,7 @@ export default function App() {
           {view === "cuenta" && <EstadoCuentaView fmt={COP.format.bind(COP)} onToast={addToast} />}
           {view === "kyc" && <KycView fmt={COP.format.bind(COP)} onToast={addToast} />}
           {view === "cuentas-bancarias" && <BankAccountsView onToast={addToast} />}
+          {view === "onboarding" && <OnboardingView onToast={addToast} />}
         </main>
       </div>
 
