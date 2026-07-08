@@ -1,34 +1,110 @@
+// src/components/layout/Sidebar.tsx
 import React from "react";
 import { useAuthStore } from "../../store/authStore";
 
-type ViewKey = "home" | "recaudo" | "dispersion" | "cuenta" | "cuentas-bancarias" | "kyc" | "onboarding";
+export type ViewKey =
+  | "home"
+  | "billeteras"
+  | "movimientos"
+  | "beneficiarios"
+  | "recaudo"
+  | "dispersion"
+  | "cuenta"
+  | "cuentas-bancarias"
+  | "tarifas"
+  | "reportes"
+  | "kyc"
+  | "onboarding";
 
 interface Props {
   active: ViewKey;
   onNav: (v: ViewKey) => void;
+  theme: "dark" | "light";
+  onToggleTheme: () => void;
 }
 
-const NAV = [
-  { key: "home"       as ViewKey, label: "Vista General",    badge: null },
-  { key: "recaudo"    as ViewKey, label: "Recaudo",          badge: 24   },
-  { key: "dispersion" as ViewKey, label: "Dispersión",       badge: null },
-  { key: "cuenta"     as ViewKey, label: "Estado de Cuenta", badge: null },
-  { key: "cuentas-bancarias" as ViewKey, label: "Cuentas Bancarias", badge: null},
-  { key: "kyc" as ViewKey, label: "Verificación KYC", badge: null },
-  { key: "onboarding" as ViewKey, label: "Onboarding Bre-B", badge: null },
+interface NavItem {
+  key: ViewKey;
+  label: string;
+  badge?: number | string;
+  section?: string;
+  icon: React.ReactNode;
+}
+
+const Ico = (path: React.ReactNode) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+    width="17" height="17" style={{ flexShrink: 0 }}>
+    {path}
+  </svg>
+);
+
+const NAV: NavItem[] = [
+  {
+    key: "home", label: "Inicio", section: "Principal",
+    icon: Ico(<path d="M3 12l9-9 9 9M5 10v10h5v-6h4v6h5V10" strokeLinecap="round" strokeLinejoin="round" />),
+  },
+  {
+    key: "billeteras", label: "Mis billeteras",
+    icon: Ico(<><rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 3H8a2 2 0 00-2 2v2h12V5a2 2 0 00-2-2z" /><circle cx="16" cy="14" r="1" fill="currentColor" /></>),
+  },
+  {
+    key: "movimientos", label: "Movimientos", section: "Operaciones",
+    icon: Ico(<path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4" strokeLinecap="round" strokeLinejoin="round" />),
+  },
+  {
+    key: "beneficiarios", label: "Beneficiarios",
+    icon: Ico(<><circle cx="9" cy="7" r="3" /><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" strokeLinecap="round" /><path d="M16 11c1.7 0 3 1.3 3 3s-1.3 3-3 3" strokeLinecap="round" /><path d="M19 20c1.7-.5 3-2 3-4" strokeLinecap="round" /></>),
+  },
+  {
+    key: "recaudo", label: "Recaudo", badge: 24,
+    icon: Ico(<path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v3a1 1 0 001 1h14a1 1 0 001-1v-3" strokeLinecap="round" strokeLinejoin="round" />),
+  },
+  {
+    key: "dispersion", label: "Dispersión",
+    icon: Ico(<path d="M12 21V9m0 0l-4 4m4-4l4 4M4 7V4a1 1 0 011-1h14a1 1 0 011 1v3" strokeLinecap="round" strokeLinejoin="round" />),
+  },
+  {
+    key: "cuenta", label: "Estado de Cuenta", section: "Cuenta",
+    icon: Ico(<><path d="M4 5h16v14H4z" /><path d="M4 9h16M8 13h5" strokeLinecap="round" /></>),
+  },
+  {
+    key: "cuentas-bancarias", label: "Cuentas Bancarias",
+    icon: Ico(<><rect x="3" y="6" width="18" height="13" rx="2" /><path d="M3 10h18M7 15h3" strokeLinecap="round" /></>),
+  },
+  {
+    key: "tarifas", label: "Mis tarifas",
+    icon: Ico(<><path d="M4 4h16v4H4zM4 12h16v4H4z" /><path d="M4 8v4M20 8v4" strokeLinecap="round" /></>),
+  },
+  {
+    key: "reportes", label: "Reportes",
+    icon: Ico(<><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h4" strokeLinecap="round" /></>),
+  },
+  {
+    key: "kyc", label: "Verificación KYC",
+    icon: Ico(<><circle cx="9" cy="8" r="3" /><path d="M3 20c0-3 3-5 6-5s6 2 6 5M16 11l2 2 4-4" strokeLinecap="round" strokeLinejoin="round" /></>),
+  },
+  {
+    key: "onboarding", label: "Onboarding Bre-B", badge: "!",
+    icon: Ico(<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" strokeLinecap="round" strokeLinejoin="round" />),
+  },
 ];
 
-export const Sidebar: React.FC<Props> = ({ active, onNav }) => {
+export const Sidebar: React.FC<Props> = ({ active, onNav, theme, onToggleTheme }) => {
   const { user, signOut } = useAuthStore();
 
-  // Genera las iniciales del nombre para el avatar (ej: "Carlos Mendoza" → "CM")
   const initials = user?.full_name
     ?.split(" ").slice(0, 2).map((n) => n[0]).join("").toUpperCase() ?? "??";
 
   return (
-    <aside style={{ width: "248px", background: "var(--surface)", borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", height: "100vh", position: "sticky", top: 0, flexShrink: 0 }}>
+    <aside style={{
+      width: "248px", flexShrink: 0,
+      background: "var(--surface)",
+      borderRight: "1px solid var(--border)",
+      display: "flex", flexDirection: "column",
+      height: "100vh", position: "sticky", top: 0,
+    }}>
 
-      {/* Logo */}
+      {/* ── Logo ── */}
       <div style={{ display: "flex", alignItems: "center", gap: "11px", padding: "20px 20px 18px", borderBottom: "1px solid var(--border)" }}>
         <div style={{ width: "32px", height: "32px", borderRadius: "9px", background: "linear-gradient(140deg, var(--accent), #7c5cff)", display: "grid", placeItems: "center", flexShrink: 0, boxShadow: "0 4px 14px -4px var(--accent-ring)" }}>
           <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
@@ -37,62 +113,95 @@ export const Sidebar: React.FC<Props> = ({ active, onNav }) => {
           </svg>
         </div>
         <div>
-          <div style={{ fontWeight: 700, fontSize: "16px" }}>Bóveda</div>
-          <div style={{ fontSize: "10.5px", color: "var(--t3)", textTransform: "uppercase", letterSpacing: ".4px", fontWeight: 600 }}>Payment Gateway</div>
+          <div style={{ fontWeight: 700, fontSize: "15px", letterSpacing: "-.2px" }}>Global Coin SAS</div>
+          <div style={{ fontSize: "10.5px", color: "var(--t3)", letterSpacing: ".3px" }}>Portal · Ramplix</div>
         </div>
       </div>
 
-      {/* Navegación */}
-      <nav style={{ padding: "14px 12px", display: "flex", flexDirection: "column", gap: "2px", flex: 1 }}>
-        <div style={{ fontSize: "10.5px", fontWeight: 600, letterSpacing: ".6px", textTransform: "uppercase", color: "var(--t3)", padding: "14px 12px 6px" }}>
-          Operación
-        </div>
+      {/* ── Nav ── */}
+      <nav style={{ flex: 1, overflowY: "auto", padding: "10px 10px 0" }}>
         {NAV.map((item) => {
           const isActive = active === item.key;
           return (
-            <button
-              key={item.key}
-              onClick={() => onNav(item.key)}
-              style={{
-                display: "flex", alignItems: "center", gap: "11px",
-                padding: "9px 12px", borderRadius: "var(--radius-sm)",
-                color: isActive ? "var(--accent)" : "var(--t2)",
-                background: isActive ? "var(--accent-dim)" : "transparent",
-                fontWeight: 500, fontSize: "13.5px", border: "none",
-                cursor: "pointer", width: "100%", textAlign: "left",
-                position: "relative", transition: ".14s",
-              }}
-            >
-              {/* Barra lateral activa */}
-              {isActive && (
-                <span style={{ position: "absolute", left: "-12px", top: "50%", transform: "translateY(-50%)", width: "3px", height: "18px", background: "var(--accent)", borderRadius: "0 3px 3px 0" }} />
+            <React.Fragment key={item.key}>
+              {item.section && (
+                <div style={{ fontSize: "10px", fontWeight: 600, color: "var(--t3)", padding: "14px 10px 4px", letterSpacing: ".07em", textTransform: "uppercase" }}>
+                  {item.section}
+                </div>
               )}
-              {item.label}
-              {item.badge && (
-                <span style={{ marginLeft: "auto", background: "var(--accent)", color: "#fff", fontSize: "10.5px", fontWeight: 700, minWidth: "18px", height: "18px", padding: "0 5px", borderRadius: "9px", display: "grid", placeItems: "center" }}>
-                  {item.badge}
-                </span>
-              )}
-            </button>
+              <button
+                onClick={() => onNav(item.key)}
+                style={{
+                  display: "flex", alignItems: "center", gap: "10px",
+                  padding: "9px 10px", width: "100%",
+                  border: "none", cursor: "pointer",
+                  fontSize: "13px", textAlign: "left",
+                  borderRadius: "var(--radius-sm)",
+                  transition: "background .1s, color .1s",
+                  background: isActive ? "var(--accent-dim)" : "transparent",
+                  color: isActive ? "var(--accent)" : "var(--t2)",
+                  fontWeight: isActive ? 500 : 400,
+                  position: "relative",
+                  marginBottom: "1px",
+                }}
+              >
+                {isActive && (
+                  <span style={{ position: "absolute", left: 0, top: "50%", transform: "translateY(-50%)", width: "3px", height: "18px", background: "var(--accent)", borderRadius: "0 3px 3px 0" }} />
+                )}
+                {item.icon}
+                <span style={{ flex: 1 }}>{item.label}</span>
+                {item.badge !== undefined && (
+                  <span style={{ background: "var(--accent)", color: "#fff", borderRadius: "20px", fontSize: "10px", padding: "1px 7px", fontWeight: 700 }}>
+                    {item.badge}
+                  </span>
+                )}
+              </button>
+            </React.Fragment>
           );
         })}
       </nav>
 
-      {/* Usuario + botón de logout */}
+      {/* ── Footer ── */}
       <div style={{ borderTop: "1px solid var(--border)", padding: "12px" }}>
+        {/* Toggle tema */}
+        <button
+          onClick={onToggleTheme}
+          style={{ display: "flex", alignItems: "center", gap: "9px", width: "100%", padding: "8px 10px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--elevated)", color: "var(--t2)", fontSize: "12.5px", fontWeight: 500, marginBottom: "8px", cursor: "pointer", transition: ".14s" }}
+        >
+          {theme === "dark" ? (
+            <>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15">
+                <circle cx="12" cy="12" r="4" />
+                <path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19" strokeLinecap="round" />
+              </svg>
+              Modo claro
+            </>
+          ) : (
+            <>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15">
+                <path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z" strokeLinejoin="round" />
+              </svg>
+              Modo oscuro
+            </>
+          )}
+        </button>
+
+        {/* Usuario */}
         <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px", borderRadius: "var(--radius-sm)" }}>
-          {/* Avatar con iniciales */}
           <div style={{ width: "30px", height: "30px", borderRadius: "8px", background: "linear-gradient(135deg, #2dd4bf, var(--accent))", display: "grid", placeItems: "center", fontWeight: 700, fontSize: "12px", color: "#fff", flexShrink: 0 }}>
             {initials}
           </div>
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: "13px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            <div style={{ fontSize: "12.5px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {user?.full_name ?? "Usuario"}
             </div>
             <div style={{ fontSize: "11px", color: "var(--t3)" }}>{user?.role}</div>
           </div>
-          {/* Botón logout */}
-          <button onClick={signOut} title="Cerrar sesión" style={{ width: "28px", height: "28px", borderRadius: "7px", display: "grid", placeItems: "center", color: "var(--t3)", border: "1px solid var(--border)", background: "none", cursor: "pointer", flexShrink: 0 }}>
+          <button
+            onClick={signOut}
+            title="Cerrar sesión"
+            style={{ width: "28px", height: "28px", borderRadius: "7px", display: "grid", placeItems: "center", color: "var(--t3)", border: "1px solid var(--border)", background: "none", cursor: "pointer", flexShrink: 0 }}
+          >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
               <path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" strokeLinecap="round" strokeLinejoin="round" />
             </svg>

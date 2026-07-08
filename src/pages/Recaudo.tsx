@@ -109,26 +109,6 @@ export const RecaudoView: React.FC<Props> = ({ fmt, onToast }) => {
         {/* Botones principales + pruebas temporales */}
         <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
 
-          {/* ── Botones de prueba — BORRAR cuando confirmes que funciona ── */}
-          <button
-            onClick={testBalance}
-            style={{ padding: "8px 12px", background: "#1a1a2e", color: "#7dd3fc", border: "1px solid #7dd3fc", borderRadius: "8px", cursor: "pointer", fontSize: "12px", fontWeight: 600 }}
-          >
-            Test Balance
-          </button>
-          <button
-            onClick={testGetLlaves}
-            style={{ padding: "8px 12px", background: "#1a2e1a", color: "#86efac", border: "1px solid #86efac", borderRadius: "8px", cursor: "pointer", fontSize: "12px", fontWeight: 600 }}
-          >
-            Test Llaves
-          </button>
-          <button
-            onClick={testRegistrarLlave}
-            style={{ padding: "8px 12px", background: "orange", color: "#000", border: "none", borderRadius: "8px", cursor: "pointer", fontSize: "12px", fontWeight: 600 }}
-          >
-            Test Registro
-          </button>
-
           {/* ── Botón principal ── */}
           <button
             onClick={() => setBrebModalOpen(true)}

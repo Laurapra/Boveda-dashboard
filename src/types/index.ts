@@ -123,3 +123,129 @@ export interface KybBusiness {
   submitted_at: string | null;
   updated_at: string;
 }
+// ── Wallet (Billetera) ────────────────────────────────────────────
+export type WalletCurrency = "COP" | "USD" | "EUR";
+export type WalletNetwork  = "Bre-B" | "ACH" | "Nequi";
+
+export interface Wallet {
+  id: string;
+  user_id: string;
+  name: string;
+  currency: WalletCurrency;
+  network: WalletNetwork;
+  account_key: string;        // llave Bre-B o número de cuenta
+  bank_name?: string;
+  balance: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface WalletTransaction {
+  id: string;
+  wallet_id: string;
+  type: "received" | "sent";
+  amount: number;
+  description: string;
+  status: "Completado" | "Pendiente" | "Rechazado";
+  counterpart_name?: string;
+  created_at: string;
+}
+
+// ── Beneficiario ─────────────────────────────────────────────────
+export type DocType = "CC" | "CE" | "NIT" | "PAS";
+export type AccountKind = "ahorros" | "corriente" | "breb";
+
+export interface BeneficiaryAccount {
+  id: string;
+  bank_name: string;
+  account_number: string;
+  account_kind: AccountKind;
+  is_default: boolean;
+}
+
+export interface Beneficiary {
+  id: string;
+  user_id: string;
+  full_name: string;
+  doc_type: DocType;
+  doc_number: string;
+  email?: string;
+  phone?: string;
+  city?: string;
+  accounts: BeneficiaryAccount[];
+  created_at: string;
+}
+
+// ── Reporte ───────────────────────────────────────────────────────
+export type ReportType = "extracto" | "dispersiones" | "recepciones" | "beneficiarios";
+
+export interface ReportFilter {
+  type: ReportType;
+  from: string;
+  to: string;
+  status: string;
+}
+// ── Constantes de negocio ────────────────────────────────────────
+export const ESTADOS = Object.freeze({
+  COMPLETADO: "Completado", PENDIENTE: "Pendiente",
+  RECHAZADO: "Rechazado",   FALLIDO: "Fallido",
+});
+export const TIPOS = Object.freeze({ RECIBIDO: "Recibido", ENVIADO: "Enviado" });
+export const TARIFAS = Object.freeze({ CARGO_FIJO: 1190, VARIABLE_PCT: 0.0012 });
+export const EMPRESA = Object.freeze({
+  nombre: "Global Coin SAS", nit: "901.234.567-8",
+  llave: "globalcoin@breb.co", portal: "Ramplix",
+});
+
+// ── Transacción ──────────────────────────────────────────────────
+export type TxnTipo   = "Recibido" | "Enviado";
+export type TxnEstado = "Completado" | "Pendiente" | "Rechazado" | "Fallido";
+
+export interface Txn {
+  id: string;
+  tipo: TxnTipo;
+  desc: string;
+  monto: number;
+  comision: number;
+  total?: number;
+  estado: TxnEstado;
+  fecha: Date;
+  divisa: string;
+  refBancaria?: string;
+  // Solo dispersiones
+  benNombre?: string;
+  benTipodoc?: string;
+  benNumdoc?: string;
+  tipoCta?: string;
+  banco?: string;
+  llave?: string;
+}
+
+// ── Beneficiario ─────────────────────────────────────────────────
+export interface BenCuenta {
+  tipo: "Bre-B" | "Ahorros" | "Corriente";
+  banco: string;
+  llave: string;
+  estado: "Activa" | "Inactiva";
+}
+
+export interface Ben {
+  id: number;
+  nombre: string;
+  tipodoc: string;
+  numdoc: string;
+  indicativo: string;
+  celular: string;
+  correo: string;
+  cuentas: BenCuenta[];
+  vol: { d: number; m: number; a: number };
+}
+
+// ── Wallet ───────────────────────────────────────────────────────
+export interface Wallet {
+  divisa: string;
+  tipo: string;
+  banco: string;
+  llave: string;
+  desc: string;
+}

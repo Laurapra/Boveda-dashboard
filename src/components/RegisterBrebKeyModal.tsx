@@ -4,6 +4,8 @@ import { Modal } from "./ui/Modal";
 import { Input } from "./ui/Input";
 import { registerBrebKey, getBrebKeys } from "../lib/bepayClient";
 import { RegisterBrebMerchantModal } from "./RegisterBrebMerchantModal";
+import { generateBrebKey, getNextConsecutivo } from "../lib/keyGenerator";
+import { useAuthStore } from "../store/authStore";
 import type { ToastType } from "../types";
 
 interface Props {
@@ -22,21 +24,32 @@ interface BrebKey {
 type Step = "list" | "create";
 
 export const RegisterBrebKeyModal: React.FC<Props> = ({ isOpen, onClose, onToast }) => {
-  const [step, setStep]           = useState<Step>("list");
-  const [keys, setKeys]           = useState<BrebKey[]>([]);
-  const [loadingKeys, setLoading] = useState(false);
-  const [saving, setSaving]       = useState(false);
-  const [error, setError]         = useState<string | null>(null);
+  const { user } = useAuthStore();
+
+  const [step, setStep]               = useState<Step>("list");
+  const [keys, setKeys]               = useState<BrebKey[]>([]);
+  const [loadingKeys, setLoading]     = useState(false);
+  const [saving, setSaving]           = useState(false);
+  const [error, setError]             = useState<string | null>(null);
   const [showMerchantRegister, setShowMerchantRegister] = useState(false);
 
-  // Campos del formulario
-  const [keyValue, setKeyValue]   = useState("");
+  // Solo referencia — la llave se genera automáticamente
   const [reference, setReference] = useState("");
 
-  // Validación en tiempo real del formato de llave
-  const keyError = keyValue && !/^[a-zA-Z0-9._-]{3,30}$/.test(keyValue)
-    ? "Solo letras, números, puntos, guiones. Entre 3 y 30 caracteres."
-    : null;
+  // Previsualización de la llave que se va a generar
+  const [previewKey, setPreviewKey] = useState("");
+
+  // Genera el preview cuando cambia el número de llaves o el usuario
+  useEffect(() => {
+    if (!user) return;
+    try {
+      const nextSeq = getNextConsecutivo(keys);
+      const key     = generateBrebKey(user.id, nextSeq);
+      setPreviewKey(key);
+    } catch {
+      setPreviewKey("");
+    }
+  }, [keys, user]);
 
   // Carga las llaves existentes al abrir
   useEffect(() => {
@@ -58,63 +71,62 @@ export const RegisterBrebKeyModal: React.FC<Props> = ({ isOpen, onClose, onToast
   };
 
   const handleClose = () => {
-    setStep("list"); setKeyValue(""); setReference(""); setError(null);
+    setStep("list");
+    setReference("");
+    setError(null);
     onClose();
   };
 
-  const handleRegister = async (e: React.FormEvent) => {
-  e.preventDefault();
-  if (!keyValue || keyError) return;
-  setSaving(true);
-  setError(null);
+  const handleRegister = async () => {
+    if (!user || !previewKey) return;
+    setSaving(true);
+    setError(null);
 
-  try {
-    const res = await registerBrebKey(reference, keyValue);
+    try {
+      const res = await registerBrebKey(reference, previewKey);
 
-    // ── LOG TEMPORAL — ver la respuesta completa ──
-    console.log("Respuesta completa de Bepay:", JSON.stringify(res, null, 2));
+      if (res?.success === false) {
+        const msg = typeof res.message === "string"
+          ? res.message
+          : JSON.stringify(res.message ?? "Error desconocido");
 
-    if (res?.success === false) {
-      const msg = typeof res.message === "string"
-        ? res.message
-        : JSON.stringify(res.message ?? "Error desconocido");
-
-      console.log("Mensaje extraído:", msg);
-
-      if (msg.toLowerCase().includes("no se encontró el usuario") || msg.toLowerCase().includes("intenta registrar")) {
-        setError("Tu comercio no está registrado en Bre-B todavía. Debes completar el registro inicial.");
-      } else {
-        setError(msg);
+        if (
+          msg.toLowerCase().includes("no se encontró el usuario") ||
+          msg.toLowerCase().includes("intenta registrar")
+        ) {
+          setError("Tu comercio no está registrado en Bre-B todavía. Debes completar el registro inicial.");
+        } else {
+          setError(msg);
+        }
+        return;
       }
-      return;
+
+      onToast("ok", "Llave Bre-B registrada", `@${previewKey} lista para recibir pagos`);
+      setReference("");
+      await fetchKeys();    // actualiza la lista y recalcula el próximo consecutivo
+      setStep("list");
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
     }
+  };
 
-    onToast("ok", "Llave Bre-B registrada", `@${keyValue} lista para recibir pagos`);
-    setKeyValue(""); setReference("");
-    await fetchKeys();
-    setStep("list");
-  } catch (err: any) {
-    console.error("Error en catch:", err);
-    setError(err.message);
-  } finally {
-    setSaving(false);
-  }
-};
-
-  // ── Estilos compartidos ──────────────────────────────────────────
-  const chip = (color: string, bg: string, label: string) => (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "3px 9px", borderRadius: "7px", fontSize: "11px", fontWeight: 700, color, background: bg }}>
-      <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: color }} />
-      {label}
-    </span>
-  );
-
+  // ── Chips de estado ──────────────────────────────────────────────
   const statusChip = (status: string) => {
-    if (status === "ACTIVE" || status === "active")
-      return chip("var(--success)", "var(--success-dim)", "Activa");
-    if (status === "PENDING" || status === "pending")
-      return chip("var(--warning)", "var(--warning-dim)", "Pendiente");
-    return chip("var(--t3)", "var(--elevated)", status);
+    const cfg: Record<string, { color: string; bg: string; label: string }> = {
+      ACTIVE:  { color: "var(--success)", bg: "var(--success-dim)", label: "Activa" },
+      active:  { color: "var(--success)", bg: "var(--success-dim)", label: "Activa" },
+      PENDING: { color: "var(--warning)", bg: "var(--warning-dim)", label: "Pendiente" },
+      pending: { color: "var(--warning)", bg: "var(--warning-dim)", label: "Pendiente" },
+    };
+    const c = cfg[status] ?? { color: "var(--t3)", bg: "var(--elevated)", label: status };
+    return (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "3px 9px", borderRadius: "7px", fontSize: "11px", fontWeight: 700, color: c.color, background: c.bg }}>
+        <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: c.color }} />
+        {c.label}
+      </span>
+    );
   };
 
   return (
@@ -126,7 +138,7 @@ export const RegisterBrebKeyModal: React.FC<Props> = ({ isOpen, onClose, onToast
         subtitle={
           step === "list"
             ? "Llaves registradas para recibir pagos"
-            : "Crea un alias para recibir pagos Bre-B"
+            : "La llave se genera automáticamente con tu ID de usuario"
         }
         maxWidth={500}
         footer={
@@ -158,8 +170,8 @@ export const RegisterBrebKeyModal: React.FC<Props> = ({ isOpen, onClose, onToast
               </button>
               <button
                 onClick={handleRegister}
-                disabled={saving || !!keyError || !keyValue}
-                style={{ padding: "9px 16px", borderRadius: "var(--radius-sm)", background: "var(--accent)", color: "#fff", fontWeight: 600, border: "none", cursor: saving || !!keyError || !keyValue ? "not-allowed" : "pointer", opacity: saving || !!keyError || !keyValue ? 0.5 : 1 }}
+                disabled={saving || !previewKey}
+                style={{ padding: "9px 16px", borderRadius: "var(--radius-sm)", background: "var(--accent)", color: "#fff", fontWeight: 600, border: "none", cursor: saving || !previewKey ? "not-allowed" : "pointer", opacity: saving || !previewKey ? 0.5 : 1 }}
               >
                 {saving ? "Registrando…" : "Registrar llave"}
               </button>
@@ -167,6 +179,7 @@ export const RegisterBrebKeyModal: React.FC<Props> = ({ isOpen, onClose, onToast
           )
         }
       >
+
         {/* ── PASO 1: Lista de llaves ── */}
         {step === "list" && (
           <>
@@ -186,7 +199,7 @@ export const RegisterBrebKeyModal: React.FC<Props> = ({ isOpen, onClose, onToast
                 </div>
                 <div style={{ fontWeight: 600, fontSize: "14.5px", marginBottom: "6px" }}>Sin llaves registradas</div>
                 <div style={{ fontSize: "12.5px", color: "var(--t3)" }}>
-                  Registra una llave para empezar a recibir pagos Bre-B
+                  Registra tu primera llave para empezar a recibir pagos
                 </div>
               </div>
             ) : (
@@ -201,7 +214,6 @@ export const RegisterBrebKeyModal: React.FC<Props> = ({ isOpen, onClose, onToast
                         <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
                     </div>
-
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 700, fontSize: "14px", fontFamily: "var(--mono)" }}>
                         @{k.key_value}
@@ -212,7 +224,6 @@ export const RegisterBrebKeyModal: React.FC<Props> = ({ isOpen, onClose, onToast
                         </div>
                       )}
                     </div>
-
                     {statusChip(k.status)}
                   </div>
                 ))}
@@ -221,50 +232,46 @@ export const RegisterBrebKeyModal: React.FC<Props> = ({ isOpen, onClose, onToast
           </>
         )}
 
-        {/* ── PASO 2: Formulario de registro ── */}
+        {/* ── PASO 2: Confirmar y registrar ── */}
         {step === "create" && (
           <>
+            {/* Info sobre la generación automática */}
             <div style={{ padding: "12px 14px", background: "var(--accent-dim)", border: "1px solid var(--accent-ring)", borderRadius: "var(--radius-sm)", fontSize: "12.5px", color: "var(--t2)", lineHeight: 1.6 }}>
-              <b style={{ color: "var(--accent)" }}>¿Qué es una llave Bre-B?</b> Es un alias personalizado que identifica tu cuenta para recibir pagos. Por ejemplo: <code style={{ fontFamily: "var(--mono)", background: "var(--elevated)", padding: "1px 6px", borderRadius: "4px", color: "var(--accent)" }}>@minegocio</code>
+              <b style={{ color: "var(--accent)" }}>Generación automática</b> — La llave se construye con el prefijo <code style={{ fontFamily: "var(--mono)", background: "var(--elevated)", padding: "1px 5px", borderRadius: "4px" }}>rmpx</code> + tus primeros 6 caracteres de usuario + consecutivo.
             </div>
 
-            <div>
-              <label style={{ fontSize: "12.5px", fontWeight: 600, color: "var(--t2)", display: "block", marginBottom: "7px" }}>
-                Llave (alias) <span style={{ color: "var(--accent)" }}>*</span>
-              </label>
-              <div style={{ position: "relative" }}>
-                <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "var(--t3)", fontWeight: 700, fontSize: "15px", pointerEvents: "none" }}>@</span>
-                <input
-                  value={keyValue}
-                  onChange={(e) => setKeyValue(e.target.value.toLowerCase().replace(/\s/g, ""))}
-                  placeholder="minegocio"
-                  maxLength={30}
-                  style={{
-                    width: "100%", padding: "10px 12px 10px 28px",
-                    border: `1px solid ${keyError ? "var(--error)" : "var(--border)"}`,
-                    borderRadius: "var(--radius-sm)", background: "var(--bg)",
-                    color: "var(--t1)", fontSize: "14px", fontFamily: "var(--mono)",
-                    outline: "none", transition: "border-color .14s, box-shadow .14s",
-                  }}
-                  onFocus={(e) => { e.target.style.borderColor = keyError ? "var(--error)" : "var(--accent)"; e.target.style.boxShadow = `0 0 0 3px ${keyError ? "var(--error-dim)" : "var(--accent-ring)"}`; }}
-                  onBlur={(e)  => { e.target.style.borderColor = keyError ? "var(--error)" : "var(--border)"; e.target.style.boxShadow = "none"; }}
-                />
+            {/* Preview de la llave generada */}
+            <div style={{ padding: "16px", background: "var(--elevated)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)" }}>
+              <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--t3)", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: "8px" }}>
+                Llave que se registrará
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <code style={{ fontFamily: "var(--mono)", fontSize: "20px", fontWeight: 700, color: "var(--accent)", letterSpacing: "1px" }}>
+                  @{previewKey}
+                </code>
+                <span style={{ fontSize: "11px", color: "var(--t3)" }}>
+                  ({previewKey.length} / 30 chars)
+                </span>
               </div>
 
-              {keyValue && !keyError && (
-                <div style={{ marginTop: "8px", padding: "8px 12px", background: "var(--success-dim)", border: "1px solid color-mix(in srgb, var(--success) 25%, transparent)", borderRadius: "var(--radius-sm)", fontSize: "12.5px", color: "var(--success)", display: "flex", alignItems: "center", gap: "8px" }}>
-                  ✓ Tu llave quedará como:{" "}
-                  <code style={{ fontFamily: "var(--mono)", fontWeight: 700 }}>@{keyValue}</code>
-                </div>
-              )}
-              {keyError && (
-                <div style={{ marginTop: "6px", fontSize: "12px", color: "var(--error)" }}>{keyError}</div>
-              )}
-              <div style={{ marginTop: "6px", fontSize: "11.5px", color: "var(--t3)" }}>
-                Solo letras, números, puntos y guiones · entre 3 y 30 caracteres
+              {/* Desglose visual de la llave */}
+              <div style={{ display: "flex", gap: "6px", marginTop: "10px", flexWrap: "wrap" }}>
+                {[
+                  { label: "Prefijo",      value: "rmpx",                               color: "var(--accent)" },
+                  { label: "ID usuario",   value: user?.id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toLowerCase() ?? "", color: "var(--info)" },
+                  { label: "Consecutivo",  value: String(getNextConsecutivo(keys)).padStart(2, "0"), color: "var(--success)" },
+                ].map((part) => (
+                  <div key={part.label} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "3px" }}>
+                    <code style={{ fontFamily: "var(--mono)", fontSize: "14px", fontWeight: 700, color: part.color, padding: "4px 8px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "6px" }}>
+                      {part.value}
+                    </code>
+                    <span style={{ fontSize: "10px", color: "var(--t3)" }}>{part.label}</span>
+                  </div>
+                ))}
               </div>
             </div>
 
+            {/* Referencia opcional */}
             <Input
               label="Referencia (opcional)"
               value={reference}
@@ -273,12 +280,17 @@ export const RegisterBrebKeyModal: React.FC<Props> = ({ isOpen, onClose, onToast
               help="Identificador interno para diferenciar subcuentas"
             />
 
-            {/* Error del servidor */}
+            {/* Próxima llave */}
+            {keys.length > 0 && (
+              <div style={{ fontSize: "11.5px", color: "var(--t3)", textAlign: "center" }}>
+                Esta será tu llave #{getNextConsecutivo(keys)} · Tienes {keys.length} llave{keys.length !== 1 ? "s" : ""} registrada{keys.length !== 1 ? "s" : ""}
+              </div>
+            )}
+
+            {/* Error */}
             {error && (
               <div style={{ padding: "10px 14px", background: "var(--error-dim)", border: "1px solid rgba(239,68,68,.25)", borderRadius: "var(--radius-sm)", fontSize: "13px", color: "var(--error)" }}>
                 <div>{error}</div>
-
-                {/* Botón para abrir el registro de comercio si ese fue el problema */}
                 {error.includes("no está registrado") && (
                   <button
                     onClick={() => setShowMerchantRegister(true)}
@@ -293,7 +305,7 @@ export const RegisterBrebKeyModal: React.FC<Props> = ({ isOpen, onClose, onToast
         )}
       </Modal>
 
-      {/* ── Modal anidado: registro del comercio en Bre-B ── */}
+      {/* Modal anidado de onboarding */}
       <RegisterBrebMerchantModal
         isOpen={showMerchantRegister}
         onClose={() => setShowMerchantRegister(false)}
@@ -301,7 +313,7 @@ export const RegisterBrebKeyModal: React.FC<Props> = ({ isOpen, onClose, onToast
         onSuccess={() => {
           setShowMerchantRegister(false);
           setError(null);
-          onToast("info", "Comercio registrado", "Ahora intenta crear tu llave nuevamente");
+          onToast("info", "Comercio registrado", "Ahora intenta registrar tu llave nuevamente");
         }}
       />
     </>

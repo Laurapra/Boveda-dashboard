@@ -23,10 +23,6 @@ interface LinkResult {
   concept: string;
 }
 
-function generateCode(length = 6) {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
-}
 
 export const CreateLinkModal: React.FC<Props> = ({ isOpen, onClose, onToast }) => {
   const { user } = useAuthStore();
@@ -59,7 +55,7 @@ export const CreateLinkModal: React.FC<Props> = ({ isOpen, onClose, onToast }) =
   try {
     // Llama a Bepay real
     const response = await createPaymentLink(amount ?? 0, concept.trim());
-    const { ide, link, qr } = response.data;
+    const { ide, link} = response.data;
 
     // Guarda también en tu tabla de Supabase para historial
     await supabase.from("payment_links").insert({
