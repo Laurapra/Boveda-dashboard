@@ -236,7 +236,7 @@ export const KycView: React.FC<Props> = ({ onToast }) => {
                   {card.icon}
                 </div>
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: "14.5px" }}>{card.label}</div>
+                  <div style={{ fontWeight: 700, fontSize: "14.5px", color: "var(--t1)" }}>{card.label}</div>
                   <div style={{ fontSize: "12px", color: "var(--t3)" }}>{card.sub}</div>
                 </div>
               </div>

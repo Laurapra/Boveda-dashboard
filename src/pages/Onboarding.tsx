@@ -486,7 +486,7 @@ export const OnboardingView: React.FC<Props> = ({ onToast }) => {
           <h2 style={{ fontSize: "18px", fontWeight: 700, marginBottom: "6px" }}>Bienvenido a Ramplix</h2>
           <p style={{ color: "var(--t2)", fontSize: "13.5px" }}>Selecciona cómo quieres registrarte</p>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", color: "var(--t1)" }}>
           {[
             { type: "pn" as const, icon: "ti-user", label: "Persona Natural", desc: "Soy una persona que desea acceder a los servicios de Ramplix en Colombia" },
             { type: "emp" as const, icon: "ti-building", label: "Empresa", desc: "Represento una empresa colombiana que quiere operar en Ramplix" },
@@ -501,7 +501,7 @@ export const OnboardingView: React.FC<Props> = ({ onToast }) => {
               <div style={{ width: "52px", height: "52px", borderRadius: "14px", background: "var(--accent-dim)", display: "grid", placeItems: "center", margin: "0 auto 14px", color: "var(--accent)" }}>
                 <i className={`ti ${opt.icon}`} style={{ fontSize: "24px" }} />
               </div>
-              <div style={{ fontWeight: 700, fontSize: "15px", marginBottom: "8px" }}>{opt.label}</div>
+              <div style={{ fontWeight: 700, fontSize: "15px", marginBottom: "8px", color: "var(--t1)" }}>{opt.label}</div>
               <div style={{ fontSize: "12.5px", color: "var(--t3)", lineHeight: 1.6 }}>{opt.desc}</div>
             </button>
           ))}
