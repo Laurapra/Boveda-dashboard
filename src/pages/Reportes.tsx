@@ -1,7 +1,7 @@
 // src/pages/Reportes.tsx
 import React, { useState, useMemo } from "react";
 import { useDataStore } from "../store/dataStore";
-import { ESTADOS, EMPRESA, TARIFAS, type ReportType } from "../types";
+import { ESTADOS, EMPRESA, type ReportType } from "../types";
 
 interface Props {
   fmt: (n: number) => string;
@@ -42,14 +42,6 @@ export const ReportesView: React.FC<Props> = ({ fmt }) => {
     beneficiarios: bens.length,
   }), [txns, bens]);
 
-  const previewData = selected === "beneficiarios"
-    ? { registros: bens.length, label: "Beneficiarios registrados" }
-    : {
-        registros:  filteredTxns.length,
-        completados: filteredTxns.filter((t) => t.estado === ESTADOS.COMPLETADO).length,
-        total:       filteredTxns.filter((t) => t.estado === ESTADOS.COMPLETADO).reduce((s, t) => s + t.monto, 0),
-        comisiones:  filteredTxns.filter((t) => t.estado === ESTADOS.COMPLETADO).reduce((s, t) => s + (t.comision || 0), 0),
-      };
 
   const handleDownload = () => {
     const tipoLabel = REPORT_TYPES.find((r) => r.key === selected)?.name ?? selected;

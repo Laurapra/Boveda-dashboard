@@ -29,12 +29,7 @@ function IndividualTab({ fmt, onToast }: SharedProps) {
   const [resolvedName, setResolvedName] = useState<string | null>(null);
   const [lookupState, setLookupState]   = useState<"idle" | "loading" | "ok">("idle");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [sending, setSending] = useState(false);
 
-  const NAMES = [
-    "MARÍA F***** GÓMEZ", "JUAN D***** RAMÍREZ",
-    "LAURA C***** TORRES", "ANDRÉS M***** SOTO",
-  ];
 
   const handleKeyChange = (v: string) => {
   setKey(v);
@@ -76,7 +71,6 @@ function IndividualTab({ fmt, onToast }: SharedProps) {
 
   const handleSend = async () => {
   if (!canSend || !resolvedName) return;
-  setSending(true); // agrega este estado si no lo tienes: const [sending, setSending] = useState(false);
 
   try {
     const reference = `BOV-${Date.now()}`;
@@ -92,7 +86,6 @@ function IndividualTab({ fmt, onToast }: SharedProps) {
   } catch (err: any) {
     onToast("error", "Error en dispersión", err.message);
   } finally {
-    setSending(false);
   }
 };
 

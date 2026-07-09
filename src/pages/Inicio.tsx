@@ -1,5 +1,5 @@
 // src/pages/Inicio.tsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 
 interface Props {
   fmt: (n: number) => string;

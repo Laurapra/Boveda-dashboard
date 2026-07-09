@@ -242,7 +242,7 @@ export interface Ben {
 }
 
 // ── Wallet ───────────────────────────────────────────────────────
-export interface Wallet {
+export interface WalletCatalogItem {
   divisa: string;
   tipo: string;
   banco: string;

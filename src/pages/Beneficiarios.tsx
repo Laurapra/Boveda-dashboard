@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { useDataStore } from "../store/dataStore";
 import { StatusBadge } from "../components/ui/StatusBadge";
 import { Modal } from "../components/ui/Modal";
-import type { ToastType, Ben, BenCuenta } from "../types";
+import type { ToastType, BenCuenta } from "../types";
 
 interface Props {
   fmt: (n: number) => string;

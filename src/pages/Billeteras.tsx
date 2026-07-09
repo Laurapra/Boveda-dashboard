@@ -3,14 +3,14 @@ import React, { useState } from "react";
 import { useDataStore, calcSaldo, fmtFechaHora } from "../store/dataStore";
 import { StatusBadge } from "../components/ui/StatusBadge";
 import { Modal } from "../components/ui/Modal";
-import type { ToastType } from "../types";
+import type { ToastType, WalletCatalogItem } from "../types";
 
 interface Props {
   fmt: (n: number) => string;
   onToast: (type: ToastType, title: string, msg: string) => void;
 }
 
-const WALLET_CATALOG = {
+const WALLET_CATALOG: WalletCatalogItem = {
   divisa: "COP", tipo: "Bre-B", banco: "Ramplix",
   llave: "globalcoin@breb.co", desc: "Peso colombiano",
 };

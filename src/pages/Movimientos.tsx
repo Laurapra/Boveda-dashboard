@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useDataStore, calcSaldo, calcComision, genTxnId, fmtFechaHora } from "../store/dataStore";
 import { StatusBadge } from "../components/ui/StatusBadge";
-import { ESTADOS, TIPOS, TARIFAS, EMPRESA, type Txn, type ToastType } from "../types";
+import { ESTADOS, TIPOS, TARIFAS, type Txn, type ToastType } from "../types";
 
 interface Props {
   fmt: (n: number) => string;

@@ -23,7 +23,7 @@ interface TarifaModalProps {
   onSave: (recibir: number, enviar: number, variable: number) => Promise<void>;
 }
 
-function TarifaModal({ isOpen, onClose, userId, userName, current, onSave }: TarifaModalProps) {
+function TarifaModal({ isOpen, onClose, userName, current, onSave }: TarifaModalProps) {
   const [recibir,  setRecibir]  = useState(String(current.recibir));
   const [enviar,   setEnviar]   = useState(String(current.enviar));
   const [variable, setVariable] = useState(String((current.variable * 100).toFixed(4)));

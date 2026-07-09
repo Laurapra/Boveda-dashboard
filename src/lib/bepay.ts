@@ -30,12 +30,6 @@ export interface BepayPayaout{
   amount:string;
   destination:string;
 }
-interface BepayKeyInfo{
-  id:string;
-  name:string;
-  bank:string;
-  account_type:string;
-}
 //REQUESTS
 export interface CreateLinkRequest{
   account_id:string;

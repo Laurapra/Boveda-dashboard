@@ -1,5 +1,5 @@
 // src/pages/Onboarding.tsx
-import React, { useState, useCallback } from "react";
+import React, { useState } from "react";
 import { registerBrebMerchant } from "../lib/bepayClient";
 import type { ToastType } from "../types";
 

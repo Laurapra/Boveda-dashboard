@@ -1,6 +1,6 @@
 // src/store/dataStore.ts
 import { create } from "zustand";
-import type { Txn, Ben, Wallet } from "../types";
+import type { Txn, Ben, WalletCatalogItem } from "../types";
 import { ESTADOS, TIPOS, TARIFAS } from "../types";
 
 // ── Datos iniciales (mock) ────────────────────────────────────────
@@ -53,20 +53,20 @@ export function iniciales(nombre: string): string {
 interface DataState {
   txns:    Txn[];
   bens:    Ben[];
-  wallets: Wallet[];
+  wallets: WalletCatalogItem[];
   addTxn:    (txn: Txn) => void;
   addBen:    (ben: Omit<Ben, "id">) => void;
   deleteBen: (id: number) => void;
   addCuenta: (benId: number, cuenta: Ben["cuentas"][0]) => void;
   deleteCuenta: (benId: number, cuentaIdx: number) => void;
-  addWallet: (wallet: Wallet) => void;
+  addWallet: (wallet: WalletCatalogItem) => void;
   updateBenVol: (benId: number, monto: number) => void;
 }
 
 export const useDataStore = create<DataState>()((set) => ({
   txns:    INITIAL_TXNS,
   bens:    INITIAL_BENS,
-  wallets: [],
+  wallets: [] as WalletCatalogItem[],
 
   addTxn: (txn) => set((s) => ({ txns: [txn, ...s.txns] })),
 
@@ -89,9 +89,7 @@ export const useDataStore = create<DataState>()((set) => ({
     ),
   })),
 
-  addWallet: (wallet) => set((s) => ({
-    wallets: [...s.wallets, wallet],
-  })),
+  addWallet: (wallet) => set((s) => ({ wallets: [...s.wallets, wallet] })),
 
   updateBenVol: (benId, monto) => set((s) => ({
     bens: s.bens.map((b) => b.id === benId
