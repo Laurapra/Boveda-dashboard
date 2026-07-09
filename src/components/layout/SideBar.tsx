@@ -7,13 +7,12 @@ export type ViewKey =
   | "billeteras"
   | "movimientos"
   | "beneficiarios"
-  | "recaudo"
-  | "dispersion"
   | "cuenta"
   | "cuentas-bancarias"
   | "tarifas"
   | "reportes"
   | "kyc"
+  | "admin"
   | "onboarding";
 
 interface Props {
@@ -56,14 +55,6 @@ const NAV: NavItem[] = [
     icon: Ico(<><circle cx="9" cy="7" r="3" /><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" strokeLinecap="round" /><path d="M16 11c1.7 0 3 1.3 3 3s-1.3 3-3 3" strokeLinecap="round" /><path d="M19 20c1.7-.5 3-2 3-4" strokeLinecap="round" /></>),
   },
   {
-    key: "recaudo", label: "Recaudo", badge: 24,
-    icon: Ico(<path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v3a1 1 0 001 1h14a1 1 0 001-1v-3" strokeLinecap="round" strokeLinejoin="round" />),
-  },
-  {
-    key: "dispersion", label: "Dispersión",
-    icon: Ico(<path d="M12 21V9m0 0l-4 4m4-4l4 4M4 7V4a1 1 0 011-1h14a1 1 0 011 1v3" strokeLinecap="round" strokeLinejoin="round" />),
-  },
-  {
     key: "cuenta", label: "Estado de Cuenta", section: "Cuenta",
     icon: Ico(<><path d="M4 5h16v14H4z" /><path d="M4 9h16M8 13h5" strokeLinecap="round" /></>),
   },
@@ -87,6 +78,10 @@ const NAV: NavItem[] = [
     key: "onboarding", label: "Onboarding Bre-B", badge: "!",
     icon: Ico(<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" strokeLinecap="round" strokeLinejoin="round" />),
   },
+  {
+    key: "admin", label: "Panel Admin", section: "Administración",
+    icon: Ico(<><circle cx="12" cy="8" r="3" /><path d="M3 20c0-4 4-7 9-7s9 3 9 7" strokeLinecap="round" /><path d="M16 3.13a4 4 0 010 7.75" strokeLinecap="round" /></>),
+  }
 ];
 
 export const Sidebar: React.FC<Props> = ({ active, onNav, theme, onToggleTheme }) => {
@@ -120,7 +115,7 @@ export const Sidebar: React.FC<Props> = ({ active, onNav, theme, onToggleTheme }
 
       {/* ── Nav ── */}
       <nav style={{ flex: 1, overflowY: "auto", padding: "10px 10px 0" }}>
-        {NAV.map((item) => {
+        {NAV.filter((item) => item.key !== "admin" || user?.role === "admin").map((item) => {
           const isActive = active === item.key;
           return (
             <React.Fragment key={item.key}>

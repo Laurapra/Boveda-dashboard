@@ -2,10 +2,9 @@
 import React, { useState } from "react";
 import { useTransactions } from "../hooks/useTransactions";
 import { Badge } from "../components/ui/Badge";
-import type { PaymentMethod, TxStatus, ToastType } from "../types";
-import { exportTransactionsXLSX } from "../lib/exporters";
 import { RegisterBrebKeyModal } from "../components/RegisterBrebKeyModal";
-import { getBrebKeys, registerBrebKey, getBepayBalance } from "../lib/bepayClient";
+import { exportTransactionsXLSX } from "../lib/exporters";
+import type { PaymentMethod, TxStatus, ToastType } from "../types";
 
 interface Props {
   fmt: (n: number) => string;
@@ -37,52 +36,6 @@ export const RecaudoView: React.FC<Props> = ({ fmt, onToast }) => {
 
   const { transactions, total, loading } = useTransactions({ method, status, query });
 
-  // ── Prueba 1: consultar llaves existentes ──────────────────────
-  const testGetLlaves = async () => {
-    try {
-      onToast("info", "Probando...", "Consultando llaves en Bepay");
-      const res = await getBrebKeys();
-      console.log("getBrebKeys respuesta:", JSON.stringify(res, null, 2));
-      const cantidad = res?.data?.length ?? 0;
-      onToast("ok", "Conexión exitosa ✓", `${cantidad} llave(s) registrada(s)`);
-      alert(JSON.stringify(res, null, 2));
-    } catch (err: any) {
-      console.error("getBrebKeys error:", err);
-      onToast("error", "Error", err.message);
-      alert("ERROR: " + err.message);
-    }
-  };
-
-  // ── Prueba 2: registrar una llave nueva ────────────────────────
-  const testRegistrarLlave = async () => {
-    try {
-      onToast("info", "Probando registro...", "Enviando a Bepay");
-      const res = await registerBrebKey("test-ref", "mitienda");
-      console.log("registerBrebKey respuesta:", JSON.stringify(res, null, 2));
-      onToast("ok", "Registro enviado", "Ver consola F12 para detalle");
-      alert(JSON.stringify(res, null, 2));
-    } catch (err: any) {
-      console.error("registerBrebKey error:", err);
-      onToast("error", "Error registro", err.message);
-      alert("ERROR: " + err.message);
-    }
-  };
-
-  // ── Prueba 3: verificar balance y account_id ───────────────────
-  const testBalance = async () => {
-    try {
-      onToast("info", "Consultando balance...", "Llamando a Bepay");
-      const res = await getBepayBalance();
-      console.log("getBalance respuesta:", JSON.stringify(res, null, 2));
-      onToast("ok", "Balance obtenido", `$${res?.data?.balance ?? "—"} COP`);
-      alert(JSON.stringify(res, null, 2));
-    } catch (err: any) {
-      console.error("getBalance error:", err);
-      onToast("error", "Error balance", err.message);
-      alert("ERROR: " + err.message);
-    }
-  };
-
   const filterStyle: React.CSSProperties = {
     display: "flex", alignItems: "center", gap: "7px",
     padding: "8px 11px", border: "1px solid var(--border)",
@@ -105,21 +58,15 @@ export const RecaudoView: React.FC<Props> = ({ fmt, onToast }) => {
             Transacciones de entrada · Nequi, Bre-B y Links de pago
           </p>
         </div>
-
-        {/* Botones principales + pruebas temporales */}
-        <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
-
-          {/* ── Botón principal ── */}
-          <button
-            onClick={() => setBrebModalOpen(true)}
-            style={{ padding: "10px 16px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: "var(--radius-sm)", fontWeight: 600, fontSize: "13px", cursor: "pointer", display: "flex", alignItems: "center", gap: "7px" }}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="15" height="15">
-              <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            Registrar llave Bre-B
-          </button>
-        </div>
+        <button
+          onClick={() => setBrebModalOpen(true)}
+          style={{ display: "inline-flex", alignItems: "center", gap: "7px", padding: "10px 16px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: "var(--radius-sm)", fontWeight: 600, fontSize: "13px", cursor: "pointer" }}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="15" height="15">
+            <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          Registrar llave Bre-B
+        </button>
       </div>
 
       {/* ── Filtros ── */}
@@ -157,10 +104,7 @@ export const RecaudoView: React.FC<Props> = ({ fmt, onToast }) => {
         </label>
         <div style={{ flex: 1 }} />
         <button
-          onClick={() => {
-            exportTransactionsXLSX(transactions);
-            onToast("ok", "Exportando", "Descargando archivo XLSX…");
-          }}
+          onClick={() => { exportTransactionsXLSX(transactions); onToast("ok", "Exportando", "Descargando archivo XLSX…"); }}
           style={{ ...filterStyle, cursor: "pointer" }}
         >
           Exportar XLSX
@@ -174,12 +118,7 @@ export const RecaudoView: React.FC<Props> = ({ fmt, onToast }) => {
             <thead>
               <tr>
                 {["ID", "Fecha", "Método", "Pagador", "Referencia", "Monto", "Comisión", "Estado", ""].map((h) => (
-                  <th key={h} style={{
-                    textAlign: h === "Monto" || h === "Comisión" ? "right" : "left",
-                    fontSize: "11px", fontWeight: 600, textTransform: "uppercase",
-                    letterSpacing: ".5px", color: "var(--t3)",
-                    padding: "11px 16px", borderBottom: "1px solid var(--border)", whiteSpace: "nowrap",
-                  }}>
+                  <th key={h} style={{ textAlign: h === "Monto" || h === "Comisión" ? "right" : "left", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".5px", color: "var(--t3)", padding: "11px 16px", borderBottom: "1px solid var(--border)", whiteSpace: "nowrap" }}>
                     {h}
                   </th>
                 ))}
@@ -187,50 +126,29 @@ export const RecaudoView: React.FC<Props> = ({ fmt, onToast }) => {
             </thead>
             <tbody>
               {loading ? (
-                <tr>
-                  <td colSpan={9} style={{ padding: "40px", textAlign: "center", color: "var(--t3)" }}>
-                    Cargando…
-                  </td>
-                </tr>
+                <tr><td colSpan={9} style={{ padding: "40px", textAlign: "center", color: "var(--t3)" }}>Cargando…</td></tr>
               ) : transactions.length === 0 ? (
-                <tr>
-                  <td colSpan={9} style={{ padding: "40px", textAlign: "center", color: "var(--t3)" }}>
-                    Sin resultados. Ajusta los filtros.
-                  </td>
-                </tr>
+                <tr><td colSpan={9} style={{ padding: "40px", textAlign: "center", color: "var(--t3)" }}>Sin resultados. Ajusta los filtros.</td></tr>
               ) : (
                 transactions.map((tx) => (
-                  <tr
-                    key={tx.id}
+                  <tr key={tx.id}
                     onMouseEnter={(e) => (e.currentTarget.style.background = "var(--elevated)")}
                     onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                     style={{ borderBottom: "1px solid var(--border)", transition: ".1s" }}
                   >
-                    <td style={{ padding: "13px 16px", fontFamily: "var(--mono)", fontSize: "12px", color: "var(--t2)" }}>
-                      {tx.id}
-                    </td>
+                    <td style={{ padding: "13px 16px", fontFamily: "var(--mono)", fontSize: "12px", color: "var(--t2)" }}>{tx.id}</td>
                     <td style={{ padding: "13px 16px", whiteSpace: "nowrap" }}>
                       {new Date(tx.created_at).toLocaleDateString("es-CO", { day: "2-digit", month: "short" })}
                     </td>
-                    <td style={{ padding: "13px 16px" }}>
-                      <MethodChip method={tx.method} />
-                    </td>
+                    <td style={{ padding: "13px 16px" }}><MethodChip method={tx.method} /></td>
                     <td style={{ padding: "13px 16px" }}>
                       <div style={{ fontWeight: 600 }}>{tx.payer_name}</div>
                       <div style={{ fontFamily: "var(--mono)", fontSize: "12px", color: "var(--t3)" }}>{tx.payer_doc}</div>
                     </td>
-                    <td style={{ padding: "13px 16px", fontFamily: "var(--mono)", fontSize: "12px", color: "var(--t2)" }}>
-                      {tx.reference}
-                    </td>
-                    <td style={{ padding: "13px 16px", textAlign: "right", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
-                      {fmt(tx.amount)}
-                    </td>
-                    <td style={{ padding: "13px 16px", textAlign: "right", color: "var(--t3)", fontSize: "12px", fontVariantNumeric: "tabular-nums" }}>
-                      {fmt(tx.fee)}
-                    </td>
-                    <td style={{ padding: "13px 16px" }}>
-                      <Badge variant={tx.status} />
-                    </td>
+                    <td style={{ padding: "13px 16px", fontFamily: "var(--mono)", fontSize: "12px", color: "var(--t2)" }}>{tx.reference}</td>
+                    <td style={{ padding: "13px 16px", textAlign: "right", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{fmt(tx.amount)}</td>
+                    <td style={{ padding: "13px 16px", textAlign: "right", color: "var(--t3)", fontSize: "12px", fontVariantNumeric: "tabular-nums" }}>{fmt(tx.fee)}</td>
+                    <td style={{ padding: "13px 16px" }}><Badge variant={tx.status} /></td>
                     <td style={{ padding: "13px 16px" }}>
                       <button
                         onClick={() => onToast("info", "Comprobante", `PDF para ${tx.reference}`)}
@@ -255,10 +173,7 @@ export const RecaudoView: React.FC<Props> = ({ fmt, onToast }) => {
           <span>Mostrando {transactions.length} de {total.toLocaleString("es-CO")} transacciones</span>
           <div style={{ display: "flex", gap: "5px" }}>
             {["‹", "1", "2", "3", "›"].map((p, i) => (
-              <button
-                key={i}
-                style={{ width: "30px", height: "30px", borderRadius: "7px", border: "1px solid var(--border)", background: p === "1" ? "var(--accent)" : "var(--surface)", color: p === "1" ? "#fff" : "var(--t2)", fontWeight: 600, cursor: "pointer", display: "grid", placeItems: "center" }}
-              >
+              <button key={i} style={{ width: "30px", height: "30px", borderRadius: "7px", border: "1px solid var(--border)", background: p === "1" ? "var(--accent)" : "var(--surface)", color: p === "1" ? "#fff" : "var(--t2)", fontWeight: 600, cursor: "pointer", display: "grid", placeItems: "center" }}>
                 {p}
               </button>
             ))}
@@ -272,7 +187,6 @@ export const RecaudoView: React.FC<Props> = ({ fmt, onToast }) => {
         onClose={() => setBrebModalOpen(false)}
         onToast={onToast}
       />
-
     </div>
   );
 };

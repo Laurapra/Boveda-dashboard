@@ -12,8 +12,6 @@ import { Sidebar, type ViewKey } from "./components/layout/SideBar";
 
 // Páginas existentes
 import { HomeView }         from "./pages/Home";
-import { RecaudoView }      from "./pages/Recaudo";
-import { DispersionView }   from "./pages/Dispersion";
 import { EstadoCuentaView } from "./pages/EstadoCuenta";
 import { BankAccountsView } from "./pages/BankAccounts";
 import { KycView }          from "./pages/Kyc";
@@ -25,6 +23,7 @@ import { MovimientosView }   from "./pages/Movimientos";
 import { BeneficiariosView } from "./pages/Beneficiarios";
 import { TarifasView }       from "./pages/Tarifas";
 import { ReportesView }      from "./pages/Reportes";
+import {AdminView} from "./pages/Admin";
 
 type AuthScreen = "login" | "register";
 
@@ -37,14 +36,13 @@ const PAGE_INFO: Record<ViewKey, { title: string; sub: string }> = {
   billeteras:          { title: "Mis billeteras",      sub: "Gestiona tus cuentas en diferentes divisas" },
   movimientos:         { title: "Movimientos",         sub: "Historial de dispersiones realizadas" },
   beneficiarios:       { title: "Beneficiarios",       sub: "Gestiona tus beneficiarios y sus cuentas bancarias" },
-  recaudo:             { title: "Recaudo",              sub: "Transacciones de entrada · Nequi, Bre-B y Links de pago" },
-  dispersion:          { title: "Dispersión",           sub: "Envía fondos a llaves Bre-B o cuentas" },
   cuenta:              { title: "Estado de Cuenta",    sub: "Movimientos, comisiones y reportes financieros" },
   "cuentas-bancarias": { title: "Cuentas Bancarias",   sub: "Gestiona las cuentas para tus dispersiones" },
   tarifas:             { title: "Mis tarifas",         sub: "Comisiones y costos por operación" },
   reportes:            { title: "Reportes",            sub: "Descarga reportes en PDF o XML" },
   kyc:                 { title: "Verificación KYC",    sub: "Completa tu verificación para operar en la plataforma" },
   onboarding:          { title: "Onboarding Bre-B",    sub: "Registro único de tu comercio en el ecosistema Bre-B" },
+  admin: { title: "Panel de Administración", sub: "Gestiona usuarios y tarifas" },
 };
 
 export default function App() {
@@ -144,12 +142,11 @@ export default function App() {
 
           {/* Páginas existentes */}
           {view === "home"              && <HomeView         fmt={fmt} onToast={addToast} />}
-          {view === "recaudo"           && <RecaudoView      fmt={fmt} onToast={addToast} />}
-          {view === "dispersion"        && <DispersionView   fmt={fmt} onToast={addToast} />}
           {view === "cuenta"            && <EstadoCuentaView fmt={fmt} onToast={addToast} />}
           {view === "cuentas-bancarias" && <BankAccountsView onToast={addToast} />}
           {view === "kyc"               && <KycView          onToast={addToast} />}
           {view === "onboarding"        && <OnboardingView   onToast={addToast} />}
+          {view === "admin" && <AdminView onToast={addToast} />}
 
           {/* Páginas nuevas */}
           {view === "billeteras"    && <BilleterasView    fmt={fmt} onToast={addToast} />}
