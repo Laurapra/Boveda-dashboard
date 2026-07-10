@@ -116,34 +116,47 @@ function GeoPicker({ labelDep, labelCiu, dep, ciu, onDep, onCiu, hint }: {
 interface UploadState { file: File | null; url: string | null; uploading: boolean; done: boolean; }
 
 function UploadZone({ label, hint, icon, state, onChange, span }: {
-  label:string; hint:string; icon:string;
+  label: string; hint: string; icon: string;
   state: UploadState;
-  onChange:(s:UploadState)=>void;
-  span?:boolean;
+  onChange: (s: UploadState) => void;
+  span?: boolean;
 }) {
   const handleClick = async () => {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = "image/*,.pdf";
+    input.accept = "image/jpeg,image/png,image/webp,application/pdf";
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
+
+      // Validar tamaño (máx 10MB)
+      if (file.size > 10 * 1024 * 1024) {
+        alert("El archivo no puede superar 10MB");
+        return;
+      }
+
       onChange({ file, url: null, uploading: true, done: false });
+
       try {
-        // Obtener URL firmada de Supabase Storage
-        const ext  = file.name.split(".").pop() ?? "jpg";
-        const docType = label.toLowerCase().replace(/[^a-z0-9]/g,"_").slice(0,30);
-        const { data: urlData } = await supabase.functions.invoke("onboarding", {
-          body: { action: "get_upload_url", payload: { doc_type: docType, ext } },
-        });
-        if (urlData?.url) {
-          await fetch(urlData.url, { method:"PUT", body: file, headers: { "Content-Type": file.type } });
-          onChange({ file, url: urlData.path, uploading: false, done: true });
-        } else {
-          onChange({ file, url: null, uploading: false, done: true }); // marca done aunque falle upload
-        }
-      } catch {
-        onChange({ file, url: null, uploading: false, done: true });
+        const ext      = file.name.split(".").pop() ?? "jpg";
+        const docType  = label.toLowerCase().replace(/[^a-z0-9]/g, "_").slice(0, 30);
+        const { data: { user } } = await supabase.auth.getUser();
+        const path     = `${user?.id}/${docType}-${Date.now()}.${ext}`;
+
+        // Subir directamente a Supabase Storage
+        const { error } = await supabase.storage
+          .from("onboarding-docs")
+          .upload(path, file, {
+            contentType: file.type,
+            upsert: true,
+          });
+
+        if (error) throw new Error(error.message);
+
+        onChange({ file, url: path, uploading: false, done: true });
+      } catch (err: any) {
+        alert(`Error al subir: ${err.message}`);
+        onChange({ file: null, url: null, uploading: false, done: false });
       }
     };
     input.click();
@@ -151,23 +164,42 @@ function UploadZone({ label, hint, icon, state, onChange, span }: {
 
   return (
     <div style={{ gridColumn: span ? "1/-1" : undefined }}>
-      <label style={LS}>{label} <span style={{ color:"var(--accent)" }}>*</span></label>
+      <label style={LS}>{label} <span style={{ color: "var(--accent)" }}>*</span></label>
       <div
         onClick={handleClick}
-        style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"90px", border:`1.5px dashed ${state.done ? "var(--success)" : "var(--border-strong)"}`, borderRadius:"var(--radius-sm)", background: state.done ? "var(--success-dim)" : "var(--elevated)", cursor:"pointer", padding:"16px", transition:".14s", gap:"6px" }}
+        style={{
+          display: "flex", flexDirection: "column", alignItems: "center",
+          justifyContent: "center", minHeight: "90px",
+          border: `1.5px dashed ${state.done ? "var(--success)" : state.uploading ? "var(--accent)" : "var(--border-strong)"}`,
+          borderRadius: "var(--radius-sm)",
+          background: state.done ? "var(--success-dim)" : state.uploading ? "var(--accent-dim)" : "var(--elevated)",
+          cursor: state.uploading ? "wait" : "pointer",
+          padding: "16px", transition: ".14s", gap: "6px",
+        }}
       >
         {state.uploading ? (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation:"spin 1s linear infinite", color:"var(--t3)" }}>
-            <path d="M12 2a10 10 0 0110 10" strokeLinecap="round" />
-          </svg>
+          <>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+              style={{ animation: "spin 1s linear infinite", color: "var(--accent)" }}>
+              <path d="M12 2a10 10 0 0110 10" strokeLinecap="round" />
+            </svg>
+            <div style={{ fontSize: "12px", color: "var(--accent)", fontWeight: 500 }}>Subiendo...</div>
+          </>
+        ) : state.done ? (
+          <>
+            <i className="ti ti-circle-check" style={{ fontSize: "22px", color: "var(--success)" }} />
+            <div style={{ fontSize: "12px", fontWeight: 500, color: "var(--success)" }}>
+              {state.file?.name ?? "Cargado"}
+            </div>
+            <div style={{ fontSize: "11px", color: "var(--success)" }}>✓ Listo · clic para cambiar</div>
+          </>
         ) : (
-          <i className={`ti ${state.done ? "ti-circle-check" : icon}`} style={{ fontSize:"22px", color: state.done ? "var(--success)" : "var(--t3)" }} />
+          <>
+            <i className={`ti ${icon}`} style={{ fontSize: "22px", color: "var(--t3)" }} />
+            <div style={{ fontSize: "12px", fontWeight: 500, color: "var(--t2)" }}>Subir archivo</div>
+            <div style={{ fontSize: "11px", color: "var(--t3)" }}>{hint}</div>
+          </>
         )}
-        <div style={{ fontSize:"12px", fontWeight:500, color: state.done ? "var(--success)" : "var(--t2)" }}>
-          {state.uploading ? "Subiendo..." : state.done ? (state.file?.name ?? "Cargado") : "Subir archivo"}
-        </div>
-        {!state.done && !state.uploading && <div style={{ fontSize:"11px", color:"var(--t3)" }}>{hint}</div>}
-        {state.done && <div style={{ fontSize:"11px", color:"var(--success)" }}>✓ Listo</div>}
       </div>
     </div>
   );
