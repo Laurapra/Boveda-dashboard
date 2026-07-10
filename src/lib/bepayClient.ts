@@ -1,13 +1,23 @@
 // src/lib/bepayClient.ts
 import { supabase } from "./supabase";
 
-// ← Sin lanzar error para ver la respuesta completa de Bepay
+// ── Función base Bepay ────────────────────────────────────────────
 async function callBepay(fn: string, action: string, payload: object) {
   const { data, error } = await supabase.functions.invoke(fn, {
     body: { action, payload },
   });
   if (error) throw new Error(error.message);
-  return data; // devuelve todo, incluso errores de Bepay
+  return data;
+}
+
+// ── Función base Onboarding ───────────────────────────────────────
+async function callOnboarding(action: string, payload: object) {
+  const { data, error } = await supabase.functions.invoke("onboarding", {
+    body: { action, payload },
+  });
+  if (error) throw new Error(error.message);
+  if (data?.error) throw new Error(data.error);
+  return data;
 }
 
 // ── Generales ─────────────────────────────────────────────────────
@@ -49,7 +59,7 @@ export async function cancelTransaction(ide: string) {
   return callBepay("bepay-charges", "cancel_transaction", { ide });
 }
 
-// ── Bre-B ─────────────────────────────────────────────────────────
+// ── Bre-B — Llaves ────────────────────────────────────────────────
 export async function registerBrebKey(reference: string, keyValue: string) {
   return callBepay("bepay-charges", "register_breb_key", { reference, key_value: keyValue });
 }
@@ -66,7 +76,30 @@ export async function getBrebDynamicQr(key: string, amount: number, concept: str
   return callBepay("bepay-charges", "breb_dynamic_qr", { key, amount, concept });
 }
 
-// ── Dispersiones ─────────────────────────────────────────────────
+// ── Bre-B — Onboarding comercio (registro en Bepay) ───────────────
+export async function registerBrebMerchant(payload: {
+  reference?: string;
+  mobile_number: string;
+  document_type: string;
+  document_number: string;
+  first_name: string;
+  middle_name?: string;
+  first_surname: string;
+  middle_surname?: string;
+  dane_code: string;
+  commerce_name: string;
+  email: string;
+  gender: "Masculino" | "Femenino";
+  address: string;
+  birth_place: string;
+  dob: string;
+  issue_date: string;
+  force?: boolean;
+}) {
+  return callBepay("bepay-charges", "breb_register", payload);
+}
+
+// ── Dispersiones ──────────────────────────────────────────────────
 export async function lookupBrebKey(key: string) {
   return callBepay("bepay-payouts", "lookup_key", { key });
 }
@@ -98,44 +131,8 @@ export async function getBankCodes() {
 export async function getPayoutStatus(payoutId: string) {
   return callBepay("bepay-payouts", "payout_status", { payout_id: payoutId });
 }
-// Agrega al final de src/lib/bepayClient.ts
-export async function registerBrebAccount(payload: object) {
-  return callBepay("bepay-charges", "breb_register", payload);
-}
-// Agrega al final de src/lib/bepayClient.ts
-export async function registerBrebMerchant(payload: {
-  reference?: string;
-  mobile_number: string;
-  document_type: string;
-  document_number: string;
-  first_name: string;
-  middle_name?: string;
-  first_surname: string;
-  middle_surname?: string;
-  dane_code: string;
-  commerce_name: string;
-  email: string;
-  gender: "Masculino" | "Femenino";
-  address: string;
-  birth_place: string;
-  dob: string;
-  issue_date: string;
-  force?: boolean;
-}) {
-  return callBepay("bepay-charges", "breb_register", payload);
-}
-// src/lib/bepayClient.ts — agrega al final
 
-// ── Onboarding ────────────────────────────────────────────────────
-async function callOnboarding(action: string, payload: object) {
-  const { data, error } = await supabase.functions.invoke("onboarding", {
-    body: { action, payload },
-  });
-  if (error) throw new Error(error.message);
-  if (data?.error) throw new Error(data.error);
-  return data;
-}
-
+// ── Onboarding (Supabase Edge Function) ───────────────────────────
 export async function submitOnboardingPN(payload: object) {
   return callOnboarding("submit_pn", payload);
 }
