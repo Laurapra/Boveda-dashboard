@@ -151,7 +151,7 @@ export default function App() {
           {/* Páginas nuevas */}
           {view === "billeteras"    && <BilleterasView    fmt={fmt} onToast={addToast} />}
           {view === "movimientos"   && <MovimientosView   fmt={fmt} onToast={addToast} />}
-          {view === "beneficiarios" && <BeneficiariosView fmt={fmt} onToast={addToast} />}
+          {view === "beneficiarios" && <BeneficiariosView onToast={addToast} />}
           {view === "tarifas"       && <TarifasView />}
           {view === "reportes"      && <ReportesView      fmt={fmt} />}
 

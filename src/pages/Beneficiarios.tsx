@@ -7,7 +7,6 @@ import { Modal } from "../components/ui/Modal";
 import type { ToastType } from "../types";
 
 interface Props {
-  fmt: (n: number) => string;
   onToast: (type: ToastType, title: string, msg: string) => void;
 }
 
@@ -42,7 +41,7 @@ function iniciales(nombre: string): string {
   return nombre.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
 }
 
-export const BeneficiariosView: React.FC<Props> = ({ fmt, onToast }) => {
+export const BeneficiariosView: React.FC<Props> = ({ onToast }) => {
   const { user } = useAuthStore();
 
   const [bens,    setBens]    = useState<Ben[]>([]);
