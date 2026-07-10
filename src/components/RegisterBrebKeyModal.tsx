@@ -78,39 +78,45 @@ export const RegisterBrebKeyModal: React.FC<Props> = ({ isOpen, onClose, onToast
   };
 
   const handleRegister = async () => {
-    if (!user || !previewKey) return;
-    setSaving(true);
-    setError(null);
+  if (!user || !previewKey) return;
+  setSaving(true);
+  setError(null);
 
-    try {
-      const res = await registerBrebKey(reference, previewKey);
+  try {
+    const res = await registerBrebKey(reference, previewKey);
+    console.log("Respuesta completa Bepay:", JSON.stringify(res, null, 2));
 
-      if (res?.success === false) {
-        const msg = typeof res.message === "string"
-          ? res.message
-          : JSON.stringify(res.message ?? "Error desconocido");
+    if (res?.success === false) {
+      const msg = typeof res.message === "string"
+        ? res.message
+        : JSON.stringify(res.message ?? res.error ?? "Error desconocido");
 
-        if (
-          msg.toLowerCase().includes("no se encontró el usuario") ||
-          msg.toLowerCase().includes("intenta registrar")
-        ) {
-          setError("Tu comercio no está registrado en Bre-B todavía. Debes completar el registro inicial.");
-        } else {
-          setError(msg);
-        }
-        return;
+      if (
+        msg.toLowerCase().includes("no se encontró el usuario") ||
+        msg.toLowerCase().includes("intenta registrar") ||
+        msg.toLowerCase().includes("not found")
+      ) {
+        setError("Tu comercio no está registrado en Bre-B. Ve a la sección 'Onboarding Bre-B' para completar el registro.");
+      } else if (msg.toLowerCase().includes("ya está registrada") || msg.toLowerCase().includes("duplicate")) {
+        setError(`La llave @${previewKey} ya existe. Se generará una nueva automáticamente.`);
+        // Recarga las llaves para recalcular el consecutivo
+        await fetchKeys();
+      } else {
+        setError(msg);
       }
-
-      onToast("ok", "Llave Bre-B registrada", `@${previewKey} lista para recibir pagos`);
-      setReference("");
-      await fetchKeys();    // actualiza la lista y recalcula el próximo consecutivo
-      setStep("list");
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setSaving(false);
+      return;
     }
-  };
+
+    onToast("ok", "Llave Bre-B registrada", `@${previewKey} lista para recibir pagos`);
+    setReference("");
+    await fetchKeys();
+    setStep("list");
+  } catch (err: any) {
+    setError(err.message);
+  } finally {
+    setSaving(false);
+  }
+};
 
   // ── Chips de estado ──────────────────────────────────────────────
   const statusChip = (status: string) => {
