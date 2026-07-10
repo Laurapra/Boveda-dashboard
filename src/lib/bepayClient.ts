@@ -124,3 +124,30 @@ export async function registerBrebMerchant(payload: {
 }) {
   return callBepay("bepay-charges", "breb_register", payload);
 }
+// src/lib/bepayClient.ts — agrega al final
+
+// ── Onboarding ────────────────────────────────────────────────────
+async function callOnboarding(action: string, payload: object) {
+  const { data, error } = await supabase.functions.invoke("onboarding", {
+    body: { action, payload },
+  });
+  if (error) throw new Error(error.message);
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+export async function submitOnboardingPN(payload: object) {
+  return callOnboarding("submit_pn", payload);
+}
+
+export async function submitOnboardingEmp(payload: object) {
+  return callOnboarding("submit_emp", payload);
+}
+
+export async function getOnboardingStatus() {
+  return callOnboarding("get_status", {});
+}
+
+export async function getOnboardingUploadUrl(docType: string, ext = "jpg") {
+  return callOnboarding("get_upload_url", { doc_type: docType, ext });
+}
