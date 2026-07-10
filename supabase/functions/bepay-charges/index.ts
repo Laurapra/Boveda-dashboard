@@ -437,12 +437,74 @@ case "get_cities": {
 }
 
 // Trae regiones + ciudades de Colombia completo y cachea en Supabase
-case "get_colombia_geo": {
+ccase "get_colombia_geo": {
   const { createClient: cc } = await import("https://esm.sh/@supabase/supabase-js@2");
   const adminClient = cc(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
+
+  // Verificar caché válido (24h)
+  const { data: cached } = await adminClient
+    .from("geo_cache")
+    .select("data, updated_at")
+    .eq("key", "colombia_geo")
+    .single();
+
+  if (cached) {
+    const age = Date.now() - new Date(cached.updated_at).getTime();
+    if (age < 24 * 60 * 60 * 1000) {
+      result = { success: true, data: cached.data, from_cache: true };
+      break;
+    }
+  }
+
+  // Paso 1: Obtener lista de países para encontrar el ID real de Colombia
+  const countriesRes = await fetch(`${BEPAY_BASE}/countries`, {
+    headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
+  });
+  const countriesJson = await countriesRes.json();
+
+  const colombia = countriesJson.data?.find(
+    (c: any) => c.name?.toLowerCase().includes("colombia") || c.code_country === 57
+  );
+
+  if (!colombia) throw new Error("Colombia no encontrada en Bepay");
+
+  const colombiaId = colombia.id;
+  console.log("Colombia ID en Bepay:", colombiaId);
+
+  // Paso 2: Regiones de Colombia con el ID correcto
+  const regRes = await fetch(`${BEPAY_BASE}/regions/${colombiaId}`, {
+    headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
+  });
+  const regJson = await regRes.json();
+  if (!regJson.success) throw new Error(`Error regiones: ${regJson.message}`);
+
+  // Paso 3: Ciudades de Colombia
+  const citRes = await fetch(`${BEPAY_BASE}/cities/${colombiaId}`, {
+    headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
+  });
+  const citJson = await citRes.json();
+  if (!citJson.success) throw new Error(`Error ciudades: ${citJson.message}`);
+
+  const geoData = {
+    colombia_id: colombiaId,
+    regions:     regJson.data,
+    cities:      citJson.data,
+  };
+
+  // Guardar en caché
+  await adminClient.from("geo_cache").upsert({
+    key:        "colombia_geo",
+    data:       geoData,
+    updated_at: new Date().toISOString(),
+  });
+
+  console.log(`Geo Colombia: ${regJson.data?.length} regiones, ${citJson.data?.length} ciudades`);
+  result = { success: true, data: geoData, from_cache: false };
+  break;
+}
 
   // Verificar caché (válido por 24h)
   const { data: cached } = await adminClient

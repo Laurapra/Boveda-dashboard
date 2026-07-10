@@ -83,23 +83,33 @@ export const RegisterBrebKeyModal: React.FC<Props> = ({ isOpen, onClose, onToast
   setError(null);
 
   try {
+    console.log("Registrando llave:", previewKey);
     const res = await registerBrebKey(reference, previewKey);
-    console.log("Respuesta completa Bepay:", JSON.stringify(res, null, 2));
+    console.log("Respuesta:", JSON.stringify(res));
+
+    if (!res) {
+      setError("Sin respuesta del servidor");
+      return;
+    }
 
     if (res?.success === false) {
-      const msg = typeof res.message === "string"
-        ? res.message
-        : JSON.stringify(res.message ?? res.error ?? "Error desconocido");
+      const rawMsg = res.message ?? res.error ?? "Error desconocido";
+      const msg = typeof rawMsg === "string"
+        ? rawMsg
+        : JSON.stringify(rawMsg);
 
       if (
         msg.toLowerCase().includes("no se encontró el usuario") ||
         msg.toLowerCase().includes("intenta registrar") ||
         msg.toLowerCase().includes("not found")
       ) {
-        setError("Tu comercio no está registrado en Bre-B. Ve a la sección 'Onboarding Bre-B' para completar el registro.");
-      } else if (msg.toLowerCase().includes("ya está registrada") || msg.toLowerCase().includes("duplicate")) {
-        setError(`La llave @${previewKey} ya existe. Se generará una nueva automáticamente.`);
-        // Recarga las llaves para recalcular el consecutivo
+        setError("Tu comercio no está registrado en Bre-B. Ve a 'Onboarding Bre-B' para completar el registro.");
+      } else if (
+        msg.toLowerCase().includes("ya está registrada") ||
+        msg.toLowerCase().includes("duplicate") ||
+        msg.toLowerCase().includes("already")
+      ) {
+        setError(`La llave @${previewKey} ya existe. Recargando...`);
         await fetchKeys();
       } else {
         setError(msg);
@@ -111,8 +121,11 @@ export const RegisterBrebKeyModal: React.FC<Props> = ({ isOpen, onClose, onToast
     setReference("");
     await fetchKeys();
     setStep("list");
-  } catch (err: any) {
-    setError(err.message);
+
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("Error en handleRegister:", message);
+    setError(message);
   } finally {
     setSaving(false);
   }
