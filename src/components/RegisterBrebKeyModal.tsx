@@ -1,11 +1,12 @@
 // src/components/RegisterBrebKeyModal.tsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Modal } from "./ui/Modal";
 import { Input } from "./ui/Input";
 import { registerBrebKey, getBrebKeys } from "../lib/bepayClient";
 import { RegisterBrebMerchantModal } from "./RegisterBrebMerchantModal";
-import { generateBrebKey, getNextConsecutivo } from "../lib/keyGenerator";
+import { generateBrebKey } from "../lib/keyGenerator";
 import { useAuthStore } from "../store/authStore";
+import { supabase } from "../lib/supabase";
 import type { ToastType } from "../types";
 
 interface Props {
@@ -26,49 +27,64 @@ type Step = "list" | "create";
 export const RegisterBrebKeyModal: React.FC<Props> = ({ isOpen, onClose, onToast }) => {
   const { user } = useAuthStore();
 
-  const [step, setStep]               = useState<Step>("list");
-  const [keys, setKeys]               = useState<BrebKey[]>([]);
-  const [loadingKeys, setLoading]     = useState(false);
-  const [saving, setSaving]           = useState(false);
-  const [error, setError]             = useState<string | null>(null);
+  const [step,    setStep]    = useState<Step>("list");
+  const [keys,    setKeys]    = useState<BrebKey[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving,  setSaving]  = useState(false);
+  const [error,   setError]   = useState<string | null>(null);
   const [showMerchantRegister, setShowMerchantRegister] = useState(false);
-
-  // Solo referencia — la llave se genera automáticamente
-  const [reference, setReference] = useState("");
-
-  // Previsualización de la llave que se va a generar
+  const [reference,  setReference]  = useState("");
   const [previewKey, setPreviewKey] = useState("");
+  const [nextSeq,    setNextSeq]    = useState(1); // consecutivo real
 
-  // Genera el preview cuando cambia el número de llaves o el usuario
-  useEffect(() => {
+  // ── Calcula el consecutivo real desde Supabase ─────────────────
+  const calcNextSeq = useCallback(async () => {
     if (!user) return;
     try {
-      const nextSeq = getNextConsecutivo(keys);
-      const key     = generateBrebKey(user.id, nextSeq);
+      const { count } = await supabase
+        .from("breb_keys")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user.id);
+
+      const seq = (count ?? 0) + 1;
+      setNextSeq(seq);
+
+      const key = generateBrebKey(user.id, seq);
       setPreviewKey(key);
     } catch {
-      setPreviewKey("");
+      // Fallback: usa length de keys de Bepay
+      const seq = keys.length + 1;
+      setNextSeq(seq);
+      try {
+        const key = generateBrebKey(user.id, seq);
+        setPreviewKey(key);
+      } catch { setPreviewKey(""); }
     }
-  }, [keys, user]);
+  }, [user, keys.length]);
 
-  // Carga las llaves existentes al abrir
-  useEffect(() => {
-    if (!isOpen) return;
-    setStep("list");
-    fetchKeys();
-  }, [isOpen]);
-
-  const fetchKeys = async () => {
+  // ── Carga llaves al abrir ──────────────────────────────────────
+  const fetchKeys = useCallback(async () => {
     setLoading(true);
     try {
       const res = await getBrebKeys();
-      setKeys(res?.data ?? []);
+      setKeys(Array.isArray(res?.data) ? res.data : []);
     } catch {
       setKeys([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setStep("list");
+    fetchKeys();
+  }, [isOpen, fetchKeys]);
+
+  // Recalcula el consecutivo cada vez que cambian las llaves o el usuario
+  useEffect(() => {
+    calcNextSeq();
+  }, [calcNextSeq]);
 
   const handleClose = () => {
     setStep("list");
@@ -78,60 +94,60 @@ export const RegisterBrebKeyModal: React.FC<Props> = ({ isOpen, onClose, onToast
   };
 
   const handleRegister = async () => {
-  if (!user || !previewKey) return;
-  setSaving(true);
-  setError(null);
+    if (!user || !previewKey) return;
+    setSaving(true);
+    setError(null);
 
-  try {
-    console.log("Registrando llave:", previewKey);
-    const res = await registerBrebKey(reference, previewKey);
-    console.log("Respuesta:", JSON.stringify(res));
+    try {
+      console.log("Registrando llave:", previewKey, "consecutivo:", nextSeq);
+      const res = await registerBrebKey(reference, previewKey);
+      console.log("Respuesta Bepay:", JSON.stringify(res));
 
-    if (!res) {
-      setError("Sin respuesta del servidor");
-      return;
-    }
-
-    if (res?.success === false) {
-      const rawMsg = res.message ?? res.error ?? "Error desconocido";
-      const msg = typeof rawMsg === "string"
-        ? rawMsg
-        : JSON.stringify(rawMsg);
-
-      if (
-        msg.toLowerCase().includes("no se encontró el usuario") ||
-        msg.toLowerCase().includes("intenta registrar") ||
-        msg.toLowerCase().includes("not found")
-      ) {
-        setError("Tu comercio no está registrado en Bre-B. Ve a 'Onboarding Bre-B' para completar el registro.");
-      } else if (
-        msg.toLowerCase().includes("ya está registrada") ||
-        msg.toLowerCase().includes("duplicate") ||
-        msg.toLowerCase().includes("already")
-      ) {
-        setError(`La llave @${previewKey} ya existe. Recargando...`);
-        await fetchKeys();
-      } else {
-        setError(msg);
+      if (!res) {
+        setError("Sin respuesta del servidor");
+        return;
       }
-      return;
+
+      if (res.success === false) {
+        const rawMsg = res.message ?? res.error ?? "Error desconocido";
+        const msg = typeof rawMsg === "string" ? rawMsg : JSON.stringify(rawMsg);
+
+        if (
+          msg.toLowerCase().includes("no se encontró el usuario") ||
+          msg.toLowerCase().includes("intenta registrar") ||
+          msg.toLowerCase().includes("not found")
+        ) {
+          setError("Tu comercio no está registrado en Bre-B. Ve a 'Onboarding Bre-B' para completar el registro.");
+        } else if (
+          msg.toLowerCase().includes("ya está registrada") ||
+          msg.toLowerCase().includes("duplicate") ||
+          msg.toLowerCase().includes("already")
+        ) {
+          setError(`La llave @${previewKey} ya existe. Recargando...`);
+          await fetchKeys();
+          await calcNextSeq();
+        } else {
+          setError(msg);
+        }
+        return;
+      }
+
+      onToast("ok", "Llave Bre-B registrada", `@${previewKey} lista para recibir pagos`);
+      setReference("");
+      // Recarga llaves Y recalcula consecutivo
+      await fetchKeys();
+      await calcNextSeq();
+      setStep("list");
+
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("Error en handleRegister:", message);
+      setError(message);
+    } finally {
+      setSaving(false);
     }
+  };
 
-    onToast("ok", "Llave Bre-B registrada", `@${previewKey} lista para recibir pagos`);
-    setReference("");
-    await fetchKeys();
-    setStep("list");
-
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("Error en handleRegister:", message);
-    setError(message);
-  } finally {
-    setSaving(false);
-  }
-};
-
-  // ── Chips de estado ──────────────────────────────────────────────
   const statusChip = (status: string) => {
     const cfg: Record<string, { color: string; bg: string; label: string }> = {
       ACTIVE:  { color: "var(--success)", bg: "var(--success-dim)", label: "Activa" },
@@ -148,6 +164,10 @@ export const RegisterBrebKeyModal: React.FC<Props> = ({ isOpen, onClose, onToast
     );
   };
 
+  // Partes del desglose — calculadas de forma segura
+  const userPart = user?.id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toLowerCase() ?? "";
+  const seqPart  = String(nextSeq).padStart(2, "0");
+
   return (
     <>
       <Modal
@@ -163,10 +183,7 @@ export const RegisterBrebKeyModal: React.FC<Props> = ({ isOpen, onClose, onToast
         footer={
           step === "list" ? (
             <>
-              <button
-                onClick={handleClose}
-                style={{ padding: "9px 16px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--surface)", color: "var(--t1)", fontWeight: 600, cursor: "pointer" }}
-              >
+              <button onClick={handleClose} style={{ padding: "9px 16px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--surface)", color: "var(--t1)", fontWeight: 600, cursor: "pointer" }}>
                 Cerrar
               </button>
               <button
@@ -181,10 +198,7 @@ export const RegisterBrebKeyModal: React.FC<Props> = ({ isOpen, onClose, onToast
             </>
           ) : (
             <>
-              <button
-                onClick={() => { setStep("list"); setError(null); }}
-                style={{ padding: "9px 16px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--surface)", color: "var(--t1)", fontWeight: 600, cursor: "pointer" }}
-              >
+              <button onClick={() => { setStep("list"); setError(null); }} style={{ padding: "9px 16px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--surface)", color: "var(--t1)", fontWeight: 600, cursor: "pointer" }}>
                 ← Volver
               </button>
               <button
@@ -198,11 +212,10 @@ export const RegisterBrebKeyModal: React.FC<Props> = ({ isOpen, onClose, onToast
           )
         }
       >
-
-        {/* ── PASO 1: Lista de llaves ── */}
+        {/* ── Lista de llaves ── */}
         {step === "list" && (
           <>
-            {loadingKeys ? (
+            {loading ? (
               <div style={{ textAlign: "center", padding: "32px", color: "var(--t3)", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: "spin 1s linear infinite" }}>
                   <path d="M12 2a10 10 0 0110 10" strokeLinecap="round" />
@@ -216,31 +229,24 @@ export const RegisterBrebKeyModal: React.FC<Props> = ({ isOpen, onClose, onToast
                     <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </div>
-                <div style={{ fontWeight: 600, fontSize: "14.5px", marginBottom: "6px" }}>Sin llaves registradas</div>
-                <div style={{ fontSize: "12.5px", color: "var(--t3)" }}>
-                  Registra tu primera llave para empezar a recibir pagos
-                </div>
+                <div style={{ fontWeight: 600, fontSize: "14.5px", marginBottom: "6px", color: "var(--t1)" }}>Sin llaves registradas</div>
+                <div style={{ fontSize: "12.5px", color: "var(--t3)" }}>Registra tu primera llave para empezar a recibir pagos</div>
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                 {keys.map((k, i) => (
-                  <div
-                    key={k.id ?? i}
-                    style={{ display: "flex", alignItems: "center", gap: "14px", padding: "14px 16px", background: "var(--elevated)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)" }}
-                  >
+                  <div key={k.id ?? i} style={{ display: "flex", alignItems: "center", gap: "14px", padding: "14px 16px", background: "var(--elevated)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)" }}>
                     <div style={{ width: "38px", height: "38px", borderRadius: "9px", background: "var(--accent-dim)", color: "var(--accent)", display: "grid", placeItems: "center", flexShrink: 0 }}>
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
                         <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 700, fontSize: "14px", fontFamily: "var(--mono)" }}>
+                      <div style={{ fontWeight: 700, fontSize: "14px", fontFamily: "var(--mono)", color: "var(--t1)" }}>
                         @{k.key_value}
                       </div>
                       {k.reference && (
-                        <div style={{ fontSize: "12px", color: "var(--t3)", marginTop: "2px" }}>
-                          Ref: {k.reference}
-                        </div>
+                        <div style={{ fontSize: "12px", color: "var(--t3)", marginTop: "2px" }}>Ref: {k.reference}</div>
                       )}
                     </div>
                     {statusChip(k.status)}
@@ -251,35 +257,36 @@ export const RegisterBrebKeyModal: React.FC<Props> = ({ isOpen, onClose, onToast
           </>
         )}
 
-        {/* ── PASO 2: Confirmar y registrar ── */}
+        {/* ── Crear nueva llave ── */}
         {step === "create" && (
           <>
-            {/* Info sobre la generación automática */}
             <div style={{ padding: "12px 14px", background: "var(--accent-dim)", border: "1px solid var(--accent-ring)", borderRadius: "var(--radius-sm)", fontSize: "12.5px", color: "var(--t2)", lineHeight: 1.6 }}>
-              <b style={{ color: "var(--accent)" }}>Generación automática</b> — La llave se construye con el prefijo <code style={{ fontFamily: "var(--mono)", background: "var(--elevated)", padding: "1px 5px", borderRadius: "4px" }}>rmpx</code> + tus primeros 6 caracteres de usuario + consecutivo.
+              <b style={{ color: "var(--accent)" }}>Generación automática</b> — La llave se construye con el prefijo{" "}
+              <code style={{ fontFamily: "var(--mono)", background: "var(--elevated)", padding: "1px 5px", borderRadius: "4px" }}>rmpx</code>
+              {" "}+ tus primeros 6 caracteres de usuario + consecutivo.
             </div>
 
-            {/* Preview de la llave generada */}
+            {/* Preview */}
             <div style={{ padding: "16px", background: "var(--elevated)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)" }}>
               <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--t3)", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: "8px" }}>
                 Llave que se registrará
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <code style={{ fontFamily: "var(--mono)", fontSize: "20px", fontWeight: 700, color: "var(--accent)", letterSpacing: "1px" }}>
-                  @{previewKey}
+                  @{previewKey || "cargando…"}
                 </code>
-                <span style={{ fontSize: "11px", color: "var(--t3)" }}>
-                  ({previewKey.length} / 30 chars)
-                </span>
+                {previewKey && (
+                  <span style={{ fontSize: "11px", color: "var(--t3)" }}>({previewKey.length} / 30 chars)</span>
+                )}
               </div>
 
-              {/* Desglose visual de la llave */}
+              {/* Desglose — valores calculados de forma segura */}
               <div style={{ display: "flex", gap: "6px", marginTop: "10px", flexWrap: "wrap" }}>
                 {[
-                  { label: "Prefijo",      value: "rmpx",                               color: "var(--accent)" },
-                  { label: "ID usuario",   value: user?.id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toLowerCase() ?? "", color: "var(--info)" },
-                  { label: "Consecutivo",  value: String(getNextConsecutivo(keys)).padStart(2, "0"), color: "var(--success)" },
-                ].map((part) => (
+                  { label: "Prefijo",     value: "rmpx",    color: "var(--accent)" },
+                  { label: "ID usuario",  value: userPart,  color: "var(--info)" },
+                  { label: "Consecutivo", value: seqPart,   color: "var(--success)" },
+                ].map(part => (
                   <div key={part.label} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "3px" }}>
                     <code style={{ fontFamily: "var(--mono)", fontSize: "14px", fontWeight: 700, color: part.color, padding: "4px 8px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "6px" }}>
                       {part.value}
@@ -290,21 +297,18 @@ export const RegisterBrebKeyModal: React.FC<Props> = ({ isOpen, onClose, onToast
               </div>
             </div>
 
-            {/* Referencia opcional */}
             <Input
               label="Referencia (opcional)"
               value={reference}
-              onChange={(e) => setReference(e.target.value)}
+              onChange={e => setReference(e.target.value)}
               placeholder="ej: cuenta-principal, sucursal-norte"
               help="Identificador interno para diferenciar subcuentas"
             />
 
-            {/* Próxima llave */}
-            {keys.length > 0 && (
-              <div style={{ fontSize: "11.5px", color: "var(--t3)", textAlign: "center" }}>
-                Esta será tu llave #{getNextConsecutivo(keys)} · Tienes {keys.length} llave{keys.length !== 1 ? "s" : ""} registrada{keys.length !== 1 ? "s" : ""}
-              </div>
-            )}
+            {/* Info consecutivo */}
+            <div style={{ fontSize: "11.5px", color: "var(--t3)", textAlign: "center" }}>
+              Esta será tu llave #{nextSeq} · Tienes {nextSeq - 1} llave{nextSeq - 1 !== 1 ? "s" : ""} registrada{nextSeq - 1 !== 1 ? "s" : ""}
+            </div>
 
             {/* Error */}
             {error && (
@@ -324,7 +328,6 @@ export const RegisterBrebKeyModal: React.FC<Props> = ({ isOpen, onClose, onToast
         )}
       </Modal>
 
-      {/* Modal anidado de onboarding */}
       <RegisterBrebMerchantModal
         isOpen={showMerchantRegister}
         onClose={() => setShowMerchantRegister(false)}

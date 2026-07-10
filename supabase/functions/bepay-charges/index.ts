@@ -8,7 +8,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// ── Helpers ───────────────────────────────────────────────────────
 async function getBepayToken(): Promise<string> {
   const res = await fetch(`${BEPAY_BASE}/get-access-token`, {
     method: "POST",
@@ -23,7 +22,6 @@ async function getBepayToken(): Promise<string> {
   return json.data;
 }
 
-// Valida y sanitiza string — previene inyecciones
 function sanitize(value: unknown, maxLen = 255): string {
   if (typeof value !== "string") throw new Error("Valor inválido");
   const clean = value.trim().slice(0, maxLen);
@@ -34,11 +32,10 @@ function sanitize(value: unknown, maxLen = 255): string {
 function validateAmount(amount: unknown): number {
   const n = Number(amount);
   if (!Number.isInteger(n) || n < 1000) throw new Error("Monto mínimo: $1.000 COP");
-  if (n > 50_000_000) throw new Error("Monto máximo: $50.000.000 COP por transacción");
+  if (n > 50_000_000) throw new Error("Monto máximo: $50.000.000 COP");
   return n;
 }
 
-// ── Audit log ─────────────────────────────────────────────────────
 async function writeAuditLog(
   adminClient: ReturnType<typeof createClient>,
   userId: string,
@@ -47,11 +44,9 @@ async function writeAuditLog(
   metadata: object
 ) {
   await adminClient.from("audit_log").insert({
-    user_id:   userId,
-    action,
-    entity:    "bepay_transaction",
-    entity_id: entityId,
-    metadata,
+    user_id: userId, action,
+    entity: "bepay_transaction",
+    entity_id: entityId, metadata,
   });
 }
 
@@ -59,7 +54,6 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    // ── Autenticación: verificar que hay sesión válida ────────────
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) throw new Error("No autorizado — falta Authorization header");
 
@@ -72,7 +66,6 @@ serve(async (req) => {
     const { data: { user }, error: authErr } = await userClient.auth.getUser();
     if (authErr || !user) throw new Error("Sesión inválida");
 
-    // ── Verificar que el usuario está activo ──────────────────────
     const { data: profile } = await userClient
       .from("profiles")
       .select("role, is_active, tarifa_recibir, tarifa_enviar, tarifa_variable, full_name")
@@ -82,7 +75,6 @@ serve(async (req) => {
     if (!profile) throw new Error("Perfil no encontrado");
     if (!profile.is_active) throw new Error("Cuenta desactivada — contacta al administrador");
 
-    // Cliente admin para escribir en DB con service role
     const adminClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -102,7 +94,6 @@ serve(async (req) => {
 
       // ── Balance ────────────────────────────────────────────────
       case "get_balance": {
-        // Solo admin puede ver el balance real de la cuenta Bepay
         if (profile.role !== "admin") throw new Error("No autorizado");
         const res = await fetch(`${BEPAY_BASE}/account-balance`, {
           method: "POST",
@@ -126,15 +117,15 @@ serve(async (req) => {
 
       // ── Crear link de cobro ────────────────────────────────────
       case "create_link": {
-        const amount    = validateAmount(payload?.amount);
-        const concept   = sanitize(payload?.concept, 100);
-        const reference = `BOV-${user.id.slice(0,8)}-${Date.now()}`;
+        const amount  = validateAmount(payload?.amount);
+        const concept = sanitize(payload?.concept, 100);
+        const ref     = `BOV-${user.id.slice(0,8)}-${Date.now()}`;
 
         const res = await fetch(`${BEPAY_BASE}/charges/link`, {
           method: "POST",
           headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json", "Accept": "application/json" },
           body: JSON.stringify({
-            type: "link", reference, currency_code: "COP", tax_percentage: 0,
+            type: "link", reference: ref, currency_code: "COP", tax_percentage: 0,
             account_id: accountId, total: amount, description: concept,
             redirect_url: payload?.redirect_url ?? Deno.env.get("FRONTEND_URL"),
           }),
@@ -142,35 +133,32 @@ serve(async (req) => {
         const bepayResult = await res.json();
 
         if (bepayResult.success && bepayResult.data) {
-          // Guardar en DB con tarifas del usuario
           const { data: txRow } = await adminClient.from("bepay_transactions").insert({
-            user_id:         user.id,
-            bepay_ide:       bepayResult.data.ide ?? bepayResult.data.id,
-            type:            "charge",
-            amount,
-            concept,
-            status:          "PENDING",
-            bepay_link:      bepayResult.data.link,
-            reference,
+            user_id: user.id,
+            bepay_ide: bepayResult.data.ide ?? bepayResult.data.id,
+            type: "charge", amount, concept,
+            status: "PENDING",
+            bepay_link: bepayResult.data.link,
+            reference: ref,
             tarifa_aplicada: profile.tarifa_recibir,
             tarifa_variable: profile.tarifa_variable,
-            comision_total:  profile.tarifa_recibir,
-            raw_response:    bepayResult.data,
+            comision_total: profile.tarifa_recibir,
+            raw_response: bepayResult.data,
           }).select().single();
 
-          // Audit log
-          await writeAuditLog(adminClient, user.id, "CREATE_LINK", txRow?.id ?? reference, { amount, concept, bepay_ide: bepayResult.data.ide });
+          await writeAuditLog(adminClient, user.id, "CREATE_LINK", txRow?.id ?? ref, {
+            amount, concept, bepay_ide: bepayResult.data.ide,
+          });
         }
 
         result = bepayResult;
         break;
       }
 
-      // ── Estado de una transacción ──────────────────────────────
+      // ── Estado de transacción ──────────────────────────────────
       case "transaction_status": {
         const ide = sanitize(payload?.ide, 100);
 
-        // Verificar que la transacción pertenece al usuario
         const { data: txOwner } = await userClient
           .from("bepay_transactions")
           .select("id, user_id")
@@ -187,7 +175,6 @@ serve(async (req) => {
         );
         const statusResult = await res.json();
 
-        // Actualizar estado en DB
         if (statusResult.data?.status) {
           await adminClient.from("bepay_transactions")
             .update({ status: statusResult.data.status, raw_response: statusResult.data, updated_at: new Date().toISOString() })
@@ -198,7 +185,7 @@ serve(async (req) => {
         break;
       }
 
-      // ── Listar transacciones del usuario ───────────────────────
+      // ── Listar transacciones ───────────────────────────────────
       case "list_my_transactions": {
         const { data: txns } = await userClient
           .from("bepay_transactions")
@@ -210,159 +197,125 @@ serve(async (req) => {
         break;
       }
 
-      // ── Registrar llave Bre-B ─────────────────────────────────────
-case "register_breb_key": {
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader) throw new Error("No autorizado");
+      // ── Registrar llave Bre-B ──────────────────────────────────
+      case "register_breb_key": {
+        const keyValue  = sanitize(payload?.key_value, 30);
+        const reference = payload?.reference ?? "";
 
-  // Cliente para obtener el user_id
-  const { createClient: createUserClient } = await import("https://esm.sh/@supabase/supabase-js@2");
-  const userClient = createUserClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_ANON_KEY")!,
-    { global: { headers: { Authorization: authHeader } } }
-  );
-  const adminClient = createUserClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-  );
+        if (!/^[a-zA-Z0-9._-]{3,30}$/.test(keyValue)) {
+          throw new Error("Formato de llave inválido");
+        }
 
-  const { data: { user } } = await userClient.auth.getUser();
-  if (!user) throw new Error("Sesión inválida");
+        // Verificar duplicado
+        const { data: existing } = await userClient
+          .from("breb_keys")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("key_value", keyValue)
+          .single();
 
-  const keyValue  = sanitize(payload?.key_value, 30);
-  const reference = payload?.reference ?? "";
+        if (existing) throw new Error(`La llave @${keyValue} ya está registrada`);
 
-  // Validar formato
-  if (!/^[a-zA-Z0-9._-]{3,30}$/.test(keyValue)) {
-    throw new Error("Formato de llave inválido");
-  }
+        // Contar solo llaves ACTIVE para el consecutivo
+        const { count: existingCount } = await adminClient
+          .from("breb_keys")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", user.id)
+          .eq("status", "ACTIVE");
 
-  // Verificar que no existe ya esa llave para este usuario
-  const { data: existing } = await userClient
-    .from("breb_keys")
-    .select("id, key_value")
-    .eq("user_id", user.id)
-    .eq("key_value", keyValue)
-    .single();
+        const consecutivo = (existingCount ?? 0) + 1;
+        console.log("Consecutivo:", consecutivo, "activas:", existingCount);
 
-  if (existing) throw new Error(`La llave @${keyValue} ya está registrada`);
+        // Llamar a Bepay
+        const res = await fetch(`${BEPAY_BASE}/bre-b/key/register`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+          },
+          body: JSON.stringify({
+            account_id: accountId,
+            reference:  reference || `rmpx-${user.id.slice(0,8)}-${String(consecutivo).padStart(2,"0")}`,
+            key_value:  keyValue,
+          }),
+        });
+        const bepayResult = await res.json();
+        console.log("register_breb_key:", JSON.stringify(bepayResult));
 
-  // Contar llaves actuales para el consecutivo
-  const { count } = await userClient
-    .from("breb_keys")
-    .select("*", { count: "exact", head: true })
-    .eq("user_id", user.id);
+        // Guardar en Supabase siempre (éxito o fallo)
+        const { error: dbErr } = await adminClient.from("breb_keys").insert({
+          user_id:        user.id,
+          key_value:      keyValue,
+          reference:      reference || null,
+          consecutivo,
+          status:         bepayResult.success ? "ACTIVE" : "FAILED",
+          bepay_response: bepayResult,
+        });
 
-  const consecutivo = (count ?? 0) + 1;
+        if (dbErr) console.error("Error guardando llave:", dbErr.message);
 
-  // Llamar a Bepay
-  const res = await fetch(`${BEPAY_BASE}/bre-b/key/register`, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${token}`,
-      "Content-Type":  "application/json",
-      "Accept":        "application/json",
-    },
-    body: JSON.stringify({
-      account_id: accountId,
-      reference:  reference || `rmpx-${user.id.slice(0,8)}-${String(consecutivo).padStart(2,"0")}`,
-      key_value:  keyValue,
-    }),
-  });
-  const bepayResult = await res.json();
-  console.log("register_breb_key bepay result:", JSON.stringify(bepayResult));
+        await adminClient.from("audit_log").insert({
+          user_id:   user.id,
+          action:    "REGISTER_BREB_KEY",
+          entity:    "breb_keys",
+          entity_id: keyValue,
+          metadata:  { key_value: keyValue, consecutivo, success: bepayResult.success },
+        });
 
-  // Guardar en Supabase independientemente del resultado de Bepay
-  const { error: dbErr } = await adminClient.from("breb_keys").insert({
-    user_id:        user.id,
-    key_value:      keyValue,
-    reference:      reference || null,
-    consecutivo,
-    status:         bepayResult.success ? "ACTIVE" : "FAILED",
-    bepay_response: bepayResult,
-  });
+        result = bepayResult;
+        break;
+      }
 
-  if (dbErr) console.error("Error guardando llave en DB:", dbErr.message);
-
-  // Audit log
-  await adminClient.from("audit_log").insert({
-    user_id:   user.id,
-    action:    "REGISTER_BREB_KEY",
-    entity:    "breb_keys",
-    entity_id: keyValue,
-    metadata:  { key_value: keyValue, consecutivo, success: bepayResult.success },
-  });
-a
-  result = bepayResult;
-  break;
-}
-
+      // ── Obtener llaves Bre-B ───────────────────────────────────
       case "get_breb_keys": {
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader) throw new Error("No autorizado");
+        // Consultar Bepay
+        const bepayRes = await fetch(`${BEPAY_BASE}/bre-b/key/get`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+          },
+          body: JSON.stringify({ account_id: accountId }),
+        });
+        const bepayKeys = await bepayRes.json();
 
-  const { createClient: createUserClient } = await import("https://esm.sh/@supabase/supabase-js@2");
-  const userClient = createUserClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_ANON_KEY")!,
-    { global: { headers: { Authorization: authHeader } } }
-  );
+        // Traer historial local
+        const { data: localKeys } = await userClient
+          .from("breb_keys")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false });
 
-  const { data: { user } } = await userClient.auth.getUser();
-  if (!user) throw new Error("Sesión inválida");
+        // Sincronizar status desde Bepay → Supabase
+        if (bepayKeys.success && Array.isArray(bepayKeys.data)) {
+          for (const bKey of bepayKeys.data) {
+            const kv = bKey.key_value ?? bKey.key;
+            if (kv) {
+              await adminClient.from("breb_keys")
+                .update({ status: bKey.status ?? "ACTIVE" })
+                .eq("user_id", user.id)
+                .eq("key_value", kv);
+            }
+          }
+        }
 
-  // Primero consulta Bepay
-  const bepayRes = await fetch(`${BEPAY_BASE}/bre-b/key/get`, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${token}`,
-      "Content-Type":  "application/json",
-      "Accept":        "application/json",
-    },
-    body: JSON.stringify({ account_id: accountId }),
-  });
-  const bepayKeys = await bepayRes.json();
+        result = {
+          success: true,
+          data:  bepayKeys.data ?? localKeys ?? [],
+          local: localKeys ?? [],
+        };
+        break;
+      }
 
-  // También trae las de Supabase para tener el historial local
-  const { data: localKeys } = await userClient
-    .from("breb_keys")
-    .select("*")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
-
-  // Sincroniza el status desde Bepay a Supabase
-  if (bepayKeys.success && Array.isArray(bepayKeys.data) && localKeys) {
-    const adminClient = createUserClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
-    for (const bKey of bepayKeys.data) {
-      await adminClient.from("breb_keys")
-        .update({ status: bKey.status ?? "ACTIVE" })
-        .eq("user_id", user.id)
-        .eq("key_value", bKey.key_value ?? bKey.key);
-    }
-  }
-
-  result = {
-    success: true,
-    data: bepayKeys.data ?? localKeys ?? [],
-    local: localKeys ?? [],
-  };
-  console.log("get_breb_keys result:", JSON.stringify(result));
-  break;
-}
-
-      // ── Bre-B: onboarding ──────────────────────────────────────
+      // ── Bre-B registro comercio ────────────────────────────────
       case "breb_register": {
-        // Validar campos requeridos del onboarding
         const required = ["mobile_number","document_type","document_number","first_name","first_surname","dane_code","commerce_name","email","gender","address","birth_place","dob","issue_date"];
         for (const field of required) {
           if (!payload?.[field]) throw new Error(`Campo requerido: ${field}`);
         }
 
-        // Validar celular colombiano
         if (!/^3[0-6][0-9]{8}$/.test(String(payload.mobile_number))) {
           throw new Error("Celular inválido. Debe ser un número colombiano de 10 dígitos.");
         }
@@ -405,151 +358,105 @@ a
         }
         break;
       }
-      // ── Geografía desde Bepay ─────────────────────────────────────
-case "get_countries": {
-  const res = await fetch(`${BEPAY_BASE}/countries`, {
-    headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
-  });
-  result = await res.json();
-  break;
-}
 
-case "get_regions": {
-  const countryId = payload?.country_id ?? 1;
-  const res = await fetch(`${BEPAY_BASE}/regions/${countryId}`, {
-    headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
-  });
-  result = await res.json();
-  break;
-}
+      // ── Geografía ─────────────────────────────────────────────
+      case "get_countries": {
+        const res = await fetch(`${BEPAY_BASE}/countries`, {
+          headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
+        });
+        result = await res.json();
+        break;
+      }
 
-case "get_cities": {
-  const countryId = payload?.country_id ?? 1;
-  const regionId  = payload?.region_id;
-  const url = regionId
-    ? `${BEPAY_BASE}/cities/${countryId}/${regionId}`
-    : `${BEPAY_BASE}/cities/${countryId}`;
-  const res = await fetch(url, {
-    headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
-  });
-  result = await res.json();
-  break;
-}
+      case "get_regions": {
+        const countryId = payload?.country_id ?? 1;
+        const res = await fetch(`${BEPAY_BASE}/regions/${countryId}`, {
+          headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
+        });
+        result = await res.json();
+        break;
+      }
 
-// Trae regiones + ciudades de Colombia completo y cachea en Supabase
-ccase "get_colombia_geo": {
-  const { createClient: cc } = await import("https://esm.sh/@supabase/supabase-js@2");
-  const adminClient = cc(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-  );
+      case "get_cities": {
+        const countryId = payload?.country_id ?? 1;
+        const regionId  = payload?.region_id;
+        const url = regionId
+          ? `${BEPAY_BASE}/cities/${countryId}/${regionId}`
+          : `${BEPAY_BASE}/cities/${countryId}`;
+        const res = await fetch(url, {
+          headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
+        });
+        result = await res.json();
+        break;
+      }
 
-  // Verificar caché válido (24h)
-  const { data: cached } = await adminClient
-    .from("geo_cache")
-    .select("data, updated_at")
-    .eq("key", "colombia_geo")
-    .single();
+      // ── Colombia geo con caché ────────────────────────────────
+      case "get_colombia_geo": {
+        // Verificar caché (24h)
+        const { data: cached } = await adminClient
+          .from("geo_cache")
+          .select("data, updated_at")
+          .eq("key", "colombia_geo")
+          .single();
 
-  if (cached) {
-    const age = Date.now() - new Date(cached.updated_at).getTime();
-    if (age < 24 * 60 * 60 * 1000) {
-      result = { success: true, data: cached.data, from_cache: true };
-      break;
-    }
-  }
+        if (cached) {
+          const age = Date.now() - new Date(cached.updated_at).getTime();
+          if (age < 24 * 60 * 60 * 1000) {
+            result = { success: true, data: cached.data, from_cache: true };
+            break;
+          }
+        }
 
-  // Paso 1: Obtener lista de países para encontrar el ID real de Colombia
-  const countriesRes = await fetch(`${BEPAY_BASE}/countries`, {
-    headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
-  });
-  const countriesJson = await countriesRes.json();
+        // Obtener países para encontrar el ID real de Colombia
+        const countriesRes = await fetch(`${BEPAY_BASE}/countries`, {
+          headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
+        });
+        const countriesJson = await countriesRes.json();
+        console.log("Países Bepay:", JSON.stringify(countriesJson));
 
-  const colombia = countriesJson.data?.find(
-    (c: any) => c.name?.toLowerCase().includes("colombia") || c.code_country === 57
-  );
+        const colombia = countriesJson.data?.find(
+  (c: { name?: string; code_country?: string; phone_code?: string; id: number }) =>
+    c.name?.toLowerCase().includes("colombia") ||
+    c.code_country === "CO" ||
+    c.phone_code === "57"
+);
+const colombiaId = colombia?.id ?? 48; // 48 según la API real de Bepay
+console.log("Colombia encontrada:", JSON.stringify(colombia));
+console.log("Colombia ID:", colombiaId);
 
-  if (!colombia) throw new Error("Colombia no encontrada en Bepay");
+        const [regRes, citRes] = await Promise.all([
+          fetch(`${BEPAY_BASE}/regions/${colombiaId}`, {
+            headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
+          }),
+          fetch(`${BEPAY_BASE}/cities/${colombiaId}`, {
+            headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
+          }),
+        ]);
 
-  const colombiaId = colombia.id;
-  console.log("Colombia ID en Bepay:", colombiaId);
+        const regJson = await regRes.json();
+        const citJson = await citRes.json();
 
-  // Paso 2: Regiones de Colombia con el ID correcto
-  const regRes = await fetch(`${BEPAY_BASE}/regions/${colombiaId}`, {
-    headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
-  });
-  const regJson = await regRes.json();
-  if (!regJson.success) throw new Error(`Error regiones: ${regJson.message}`);
+        console.log("Regiones:", regJson.success, "count:", regJson.data?.length);
+        console.log("Ciudades:", citJson.success, "count:", citJson.data?.length);
 
-  // Paso 3: Ciudades de Colombia
-  const citRes = await fetch(`${BEPAY_BASE}/cities/${colombiaId}`, {
-    headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
-  });
-  const citJson = await citRes.json();
-  if (!citJson.success) throw new Error(`Error ciudades: ${citJson.message}`);
+        if (!regJson.success) throw new Error(`Error regiones: ${JSON.stringify(regJson.message)}`);
+        if (!citJson.success) throw new Error(`Error ciudades: ${JSON.stringify(citJson.message)}`);
 
-  const geoData = {
-    colombia_id: colombiaId,
-    regions:     regJson.data,
-    cities:      citJson.data,
-  };
+        const geoData = {
+          colombia_id: colombiaId,
+          regions:     regJson.data ?? [],
+          cities:      citJson.data ?? [],
+        };
 
-  // Guardar en caché
-  await adminClient.from("geo_cache").upsert({
-    key:        "colombia_geo",
-    data:       geoData,
-    updated_at: new Date().toISOString(),
-  });
+        await adminClient.from("geo_cache").upsert({
+          key:        "colombia_geo",
+          data:       geoData,
+          updated_at: new Date().toISOString(),
+        });
 
-  console.log(`Geo Colombia: ${regJson.data?.length} regiones, ${citJson.data?.length} ciudades`);
-  result = { success: true, data: geoData, from_cache: false };
-  break;
-}
-
-  // Verificar caché (válido por 24h)
-  const { data: cached } = await adminClient
-    .from("geo_cache")
-    .select("data, updated_at")
-    .eq("key", "colombia_geo")
-    .single();
-
-  if (cached) {
-    const age = Date.now() - new Date(cached.updated_at).getTime();
-    if (age < 24 * 60 * 60 * 1000) {
-      result = { success: true, data: cached.data, from_cache: true };
-      break;
-    }
-  }
-
-  // Traer regiones de Colombia (country_id = 1 según el endpoint)
-  const regRes = await fetch(`${BEPAY_BASE}/regions/1`, {
-    headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
-  });
-  const regJson = await regRes.json();
-  if (!regJson.success) throw new Error("Error obteniendo regiones de Bepay");
-
-  // Traer ciudades de Colombia
-  const citRes = await fetch(`${BEPAY_BASE}/cities/1`, {
-    headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
-  });
-  const citJson = await citRes.json();
-  if (!citJson.success) throw new Error("Error obteniendo ciudades de Bepay");
-
-  const geoData = {
-    regions: regJson.data,
-    cities:  citJson.data,
-  };
-
-  // Guardar en caché
-  await adminClient.from("geo_cache").upsert({
-    key:        "colombia_geo",
-    data:       geoData,
-    updated_at: new Date().toISOString(),
-  });
-
-  result = { success: true, data: geoData, from_cache: false };
-  break;
-}
+        result = { success: true, data: geoData, from_cache: false };
+        break;
+      }
 
       default:
         return new Response(
