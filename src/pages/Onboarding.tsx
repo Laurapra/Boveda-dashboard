@@ -1,7 +1,7 @@
 // src/pages/Onboarding.tsx
 import React, { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
-import { submitOnboardingPN, submitOnboardingEmp, getOnboardingStatus, getOnboardingUploadUrl } from "../lib/bepayClient";
+import { submitOnboardingPN, submitOnboardingEmp, getOnboardingStatus } from "../lib/bepayClient";
 import type { ToastType } from "../types";
 
 interface Props {
