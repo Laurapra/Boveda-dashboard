@@ -92,7 +92,7 @@ serve(async (req) => {
 
     switch (action) {
 
-      // ── Balance ────────────────────────────────────────────────
+      // ── Balance (solo admin) ────────────────────────────────────
       case "get_balance": {
         if (profile.role !== "admin") throw new Error("No autorizado");
         const res = await fetch(`${BEPAY_BASE}/account-balance`, {
@@ -104,7 +104,7 @@ serve(async (req) => {
         break;
       }
 
-      // ── Métodos de pago ────────────────────────────────────────
+      // ── Métodos de pago ──────────────────────────────────────────
       case "get_payment_methods": {
         const res = await fetch(`${BEPAY_BASE}/accounts/paymentmethods`, {
           method: "POST",
@@ -115,11 +115,26 @@ serve(async (req) => {
         break;
       }
 
-      // ── Crear link de cobro ────────────────────────────────────
+      // ── Crear link de cobro (con llave virtual opcional) ─────────
       case "create_link": {
-        const amount  = validateAmount(payload?.amount);
-        const concept = sanitize(payload?.concept, 100);
-        const ref     = `BOV-${user.id.slice(0,8)}-${Date.now()}`;
+        const amount     = validateAmount(payload?.amount);
+        const concept    = sanitize(payload?.concept, 100);
+        const virtualKey = payload?.virtual_key ? sanitize(payload.virtual_key, 30) : null;
+
+        if (virtualKey) {
+          const { data: keyOwner } = await userClient
+            .from("breb_keys")
+            .select("id, status")
+            .eq("key_value", virtualKey)
+            .eq("user_id", user.id)
+            .single();
+          if (!keyOwner) throw new Error("Llave no encontrada o no pertenece a tu cuenta");
+          if (keyOwner.status !== "ACTIVE") throw new Error("Esta llave está inactiva");
+        }
+
+        const ref = virtualKey
+          ? `${virtualKey}-${Date.now()}`
+          : `BOV-${user.id.slice(0,8)}-${Date.now()}`;
 
         const res = await fetch(`${BEPAY_BASE}/charges/link`, {
           method: "POST",
@@ -140,6 +155,7 @@ serve(async (req) => {
             status: "PENDING",
             bepay_link: bepayResult.data.link,
             reference: ref,
+            account_key: virtualKey,
             tarifa_aplicada: profile.tarifa_recibir,
             tarifa_variable: profile.tarifa_variable,
             comision_total: profile.tarifa_recibir,
@@ -147,7 +163,7 @@ serve(async (req) => {
           }).select().single();
 
           await writeAuditLog(adminClient, user.id, "CREATE_LINK", txRow?.id ?? ref, {
-            amount, concept, bepay_ide: bepayResult.data.ide,
+            amount, concept, virtual_key: virtualKey, bepay_ide: bepayResult.data.ide,
           });
         }
 
@@ -155,7 +171,26 @@ serve(async (req) => {
         break;
       }
 
-      // ── Estado de transacción ──────────────────────────────────
+      // ── Crear QR de cobro (con llave virtual opcional) ───────────
+      case "create_qr": {
+        const amount     = validateAmount(payload?.amount);
+        const concept    = sanitize(payload?.concept, 100);
+        const virtualKey = payload?.virtual_key ? sanitize(payload.virtual_key, 30) : null;
+        const ref = virtualKey ? `${virtualKey}-${Date.now()}` : `BOV-${user.id.slice(0,8)}-${Date.now()}`;
+
+        const res = await fetch(`${BEPAY_BASE}/charges/qr`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json", "Accept": "application/json" },
+          body: JSON.stringify({
+            type: "qr", reference: ref, currency_code: "COP", tax_percentage: 0,
+            account_id: accountId, total: amount, description: concept,
+          }),
+        });
+        result = await res.json();
+        break;
+      }
+
+      // ── Estado de transacción ─────────────────────────────────────
       case "transaction_status": {
         const ide = sanitize(payload?.ide, 100);
 
@@ -179,13 +214,29 @@ serve(async (req) => {
           await adminClient.from("bepay_transactions")
             .update({ status: statusResult.data.status, raw_response: statusResult.data, updated_at: new Date().toISOString() })
             .eq("bepay_ide", ide);
+
+          // Si se aprobó y tenía llave virtual, incrementa su total recibido
+          if (statusResult.data.status === "APPROVED" && txOwner) {
+            const { data: txFull } = await adminClient
+              .from("bepay_transactions")
+              .select("account_key, amount, user_id")
+              .eq("bepay_ide", ide)
+              .single();
+            if (txFull?.account_key) {
+              await adminClient.rpc("increment_key_total", {
+                p_key_value: txFull.account_key,
+                p_user_id:   txFull.user_id,
+                p_amount:    txFull.amount,
+              });
+            }
+          }
         }
 
         result = statusResult;
         break;
       }
 
-      // ── Listar transacciones ───────────────────────────────────
+      // ── Listar transacciones del usuario ──────────────────────────
       case "list_my_transactions": {
         const { data: txns } = await userClient
           .from("bepay_transactions")
@@ -197,120 +248,90 @@ serve(async (req) => {
         break;
       }
 
-      // ── Registrar llave Bre-B ──────────────────────────────────
-      case "register_breb_key": {
-        const keyValue  = sanitize(payload?.key_value, 30);
-        const reference = payload?.reference ?? "";
+      // ── Crear llave VIRTUAL (no llama a Bepay) ────────────────────
+      case "create_virtual_key": {
+  const reference = payload?.reference ? sanitize(payload.reference, 100) : null;
+  const userPart  = user.id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toLowerCase();
 
-        if (!/^[a-zA-Z0-9._-]{3,30}$/.test(keyValue)) {
-          throw new Error("Formato de llave inválido");
-        }
+  // Reintenta hasta 5 veces si hay choque de llave duplicada
+  let lastError: any = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { count } = await adminClient
+      .from("breb_keys")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id);
 
-        // Verificar duplicado
-        const { data: existing } = await userClient
-          .from("breb_keys")
-          .select("id")
-          .eq("user_id", user.id)
-          .eq("key_value", keyValue)
-          .single();
+    const consecutivo = (count ?? 0) + 1 + attempt; // desplaza si hay colisión
+    const virtualKey  = `rmpx${userPart}${String(consecutivo).padStart(2, "0")}`;
 
-        if (existing) throw new Error(`La llave @${keyValue} ya está registrada`);
+    const { data, error } = await adminClient.from("breb_keys").insert({
+      user_id:          user.id,
+      key_value:        virtualKey,
+      reference,
+      consecutivo,
+      status:           "ACTIVE",
+      is_virtual:       true,
+      real_account_key: "@BETEST",
+      bepay_response:   { note: "Llave virtual interna" },
+    }).select().single();
 
-        // Contar solo llaves ACTIVE para el consecutivo
-        const { count: existingCount } = await adminClient
-          .from("breb_keys")
-          .select("*", { count: "exact", head: true })
-          .eq("user_id", user.id)
-          .eq("status", "ACTIVE");
+    if (!error) {
+      await adminClient.from("audit_log").insert({
+        user_id:   user.id,
+        action:    "CREATE_VIRTUAL_KEY",
+        entity:    "breb_keys",
+        entity_id: data.id,
+        metadata:  { key_value: virtualKey, consecutivo },
+      });
+      result = { success: true, data };
+      break;
+    }
 
-        const consecutivo = (existingCount ?? 0) + 1;
-        console.log("Consecutivo:", consecutivo, "activas:", existingCount);
+    // Si el error es de duplicado, reintenta con el siguiente número
+    if (error.code === "23505") {
+      lastError = error;
+      continue;
+    }
 
-        // Llamar a Bepay
-        const res = await fetch(`${BEPAY_BASE}/bre-b/key/register`, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${token}`,
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-          },
-          body: JSON.stringify({
-            account_id: accountId,
-            reference:  reference || `rmpx-${user.id.slice(0,8)}-${String(consecutivo).padStart(2,"0")}`,
-            key_value:  keyValue,
-          }),
-        });
-        const bepayResult = await res.json();
-        console.log("register_breb_key:", JSON.stringify(bepayResult));
+    throw new Error(error.message);
+  }
 
-        // Guardar en Supabase siempre (éxito o fallo)
-        const { error: dbErr } = await adminClient.from("breb_keys").insert({
-          user_id:        user.id,
-          key_value:      keyValue,
-          reference:      reference || null,
-          consecutivo,
-          status:         bepayResult.success ? "ACTIVE" : "FAILED",
-          bepay_response: bepayResult,
-        });
+  if (!result) throw new Error(lastError?.message ?? "No se pudo generar una llave única tras varios intentos");
+  break;
+}
 
-        if (dbErr) console.error("Error guardando llave:", dbErr.message);
-
-        await adminClient.from("audit_log").insert({
-          user_id:   user.id,
-          action:    "REGISTER_BREB_KEY",
-          entity:    "breb_keys",
-          entity_id: keyValue,
-          metadata:  { key_value: keyValue, consecutivo, success: bepayResult.success },
-        });
-
-        result = bepayResult;
-        break;
-      }
-
-      // ── Obtener llaves Bre-B ───────────────────────────────────
+      // ── Listar SOLO las llaves virtuales del usuario actual ───────
       case "get_breb_keys": {
-        // Consultar Bepay
-        const bepayRes = await fetch(`${BEPAY_BASE}/bre-b/key/get`, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${token}`,
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-          },
-          body: JSON.stringify({ account_id: accountId }),
-        });
-        const bepayKeys = await bepayRes.json();
-
-        // Traer historial local
-        const { data: localKeys } = await userClient
+        const { data: localKeys, error } = await userClient
           .from("breb_keys")
           .select("*")
           .eq("user_id", user.id)
           .order("created_at", { ascending: false });
 
-        // Sincronizar status desde Bepay → Supabase
-        if (bepayKeys.success && Array.isArray(bepayKeys.data)) {
-          for (const bKey of bepayKeys.data) {
-            const kv = bKey.key_value ?? bKey.key;
-            if (kv) {
-              await adminClient.from("breb_keys")
-                .update({ status: bKey.status ?? "ACTIVE" })
-                .eq("user_id", user.id)
-                .eq("key_value", kv);
-            }
-          }
-        }
-
-        result = {
-          success: true,
-          data:  bepayKeys.data ?? localKeys ?? [],
-          local: localKeys ?? [],
-        };
+        if (error) throw new Error(error.message);
+        result = { success: true, data: localKeys ?? [] };
         break;
       }
 
-      // ── Bre-B registro comercio ────────────────────────────────
+      // ── Desactivar llave virtual ──────────────────────────────────
+      case "deactivate_virtual_key": {
+        const keyId = sanitize(payload?.key_id, 100);
+
+        const { error } = await adminClient
+          .from("breb_keys")
+          .update({ status: "INACTIVE", updated_at: new Date().toISOString() })
+          .eq("id", keyId)
+          .eq("user_id", user.id);
+
+        if (error) throw new Error(error.message);
+        result = { success: true };
+        break;
+      }
+
+      // ── Onboarding comercio (una sola vez, cuenta 437) ────────────
       case "breb_register": {
+        if (profile.role !== "admin") throw new Error("Solo el administrador puede registrar el comercio principal");
+
         const required = ["mobile_number","document_type","document_number","first_name","first_surname","dane_code","commerce_name","email","gender","address","birth_place","dob","issue_date"];
         for (const field of required) {
           if (!payload?.[field]) throw new Error(`Campo requerido: ${field}`);
@@ -345,21 +366,20 @@ serve(async (req) => {
             issue_date:           payload.issue_date,
             terms_and_conditions: true,
             use_wrapper:          "bepay",
-            force:                false,
+            force:                payload.force ?? false,
           }),
         });
         result = await res.json();
 
         if (result.success) {
-          await writeAuditLog(adminClient, user.id, "BREB_REGISTER", user.id, {
+          await writeAuditLog(adminClient, user.id, "BREB_REGISTER", accountId.toString(), {
             commerce_name: payload.commerce_name,
-            document_number: payload.document_number,
           });
         }
         break;
       }
 
-      // ── Geografía ─────────────────────────────────────────────
+      // ── Geografía ──────────────────────────────────────────────────
       case "get_countries": {
         const res = await fetch(`${BEPAY_BASE}/countries`, {
           headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
@@ -368,31 +388,7 @@ serve(async (req) => {
         break;
       }
 
-      case "get_regions": {
-        const countryId = payload?.country_id ?? 1;
-        const res = await fetch(`${BEPAY_BASE}/regions/${countryId}`, {
-          headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
-        });
-        result = await res.json();
-        break;
-      }
-
-      case "get_cities": {
-        const countryId = payload?.country_id ?? 1;
-        const regionId  = payload?.region_id;
-        const url = regionId
-          ? `${BEPAY_BASE}/cities/${countryId}/${regionId}`
-          : `${BEPAY_BASE}/cities/${countryId}`;
-        const res = await fetch(url, {
-          headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
-        });
-        result = await res.json();
-        break;
-      }
-
-      // ── Colombia geo con caché ────────────────────────────────
       case "get_colombia_geo": {
-        // Verificar caché (24h)
         const { data: cached } = await adminClient
           .from("geo_cache")
           .select("data, updated_at")
@@ -407,22 +403,7 @@ serve(async (req) => {
           }
         }
 
-        // Obtener países para encontrar el ID real de Colombia
-        const countriesRes = await fetch(`${BEPAY_BASE}/countries`, {
-          headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
-        });
-        const countriesJson = await countriesRes.json();
-        console.log("Países Bepay:", JSON.stringify(countriesJson));
-
-        const colombia = countriesJson.data?.find(
-  (c: { name?: string; code_country?: string; phone_code?: string; id: number }) =>
-    c.name?.toLowerCase().includes("colombia") ||
-    c.code_country === "CO" ||
-    c.phone_code === "57"
-);
-const colombiaId = colombia?.id ?? 48; // 48 según la API real de Bepay
-console.log("Colombia encontrada:", JSON.stringify(colombia));
-console.log("Colombia ID:", colombiaId);
+        const colombiaId = 48; // Confirmado por respuesta real de Bepay
 
         const [regRes, citRes] = await Promise.all([
           fetch(`${BEPAY_BASE}/regions/${colombiaId}`, {
@@ -436,22 +417,13 @@ console.log("Colombia ID:", colombiaId);
         const regJson = await regRes.json();
         const citJson = await citRes.json();
 
-        console.log("Regiones:", regJson.success, "count:", regJson.data?.length);
-        console.log("Ciudades:", citJson.success, "count:", citJson.data?.length);
-
         if (!regJson.success) throw new Error(`Error regiones: ${JSON.stringify(regJson.message)}`);
         if (!citJson.success) throw new Error(`Error ciudades: ${JSON.stringify(citJson.message)}`);
 
-        const geoData = {
-          colombia_id: colombiaId,
-          regions:     regJson.data ?? [],
-          cities:      citJson.data ?? [],
-        };
+        const geoData = { colombia_id: colombiaId, regions: regJson.data ?? [], cities: citJson.data ?? [] };
 
         await adminClient.from("geo_cache").upsert({
-          key:        "colombia_geo",
-          data:       geoData,
-          updated_at: new Date().toISOString(),
+          key: "colombia_geo", data: geoData, updated_at: new Date().toISOString(),
         });
 
         result = { success: true, data: geoData, from_cache: false };

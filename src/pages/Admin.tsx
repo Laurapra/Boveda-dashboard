@@ -210,14 +210,28 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
   const pendingOb = onboardings.filter(o => o.status === "pending").length;
 
   const reviewOnboarding = async (id: string, type: string, status: string, reason?: string) => {
-    const { error: err } = await supabase.functions.invoke("onboarding", {
-      body: { action: "review", payload: { target_id: id, type, status, reason } },
-    });
-    if (err) { onToast("error", "Error", err.message); return; }
-    onToast("ok", "Revisión guardada", `Estado: ${status}`);
-    loadOnboardings();
-  };
+  // 1. Actualizar estado en DB
+  const { error: err } = await supabase.functions.invoke("onboarding", {
+    body: { action: "review", payload: { target_id: id, type, status, reason } },
+  });
+  if (err) { onToast("error", "Error", err.message); return; }
 
+  // 2. Si aprobaron → intentar registrar en Bepay Bre-B automáticamente
+  if (status === "approved") {
+    onToast("info", "Registrando en Bre-B…", "Esto puede tomar unos segundos");
+    const { error: brebErr } = await supabase.functions.invoke("onboarding", {
+      body: { action: "register_in_bepay", payload: { onboarding_id: id, type } },
+    });
+    if (brebErr) {
+      onToast("error", "Error Bepay", brebErr.message);
+    } else {
+      onToast("ok", "Aprobado y registrado en Bre-B", "El usuario ya puede crear llaves");
+    }
+  } else {
+    onToast("ok", "Revisión guardada", `Estado: ${status}`);
+  }
+  loadOnboardings();
+};
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.email || !form.password || !form.full_name) { setFormError("Completa todos los campos obligatorios"); return; }

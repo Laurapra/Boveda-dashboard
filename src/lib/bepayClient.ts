@@ -59,11 +59,6 @@ export async function cancelTransaction(ide: string) {
   return callBepay("bepay-charges", "cancel_transaction", { ide });
 }
 
-// ── Bre-B — Llaves ────────────────────────────────────────────────
-export async function registerBrebKey(reference: string, keyValue: string) {
-  return callBepay("bepay-charges", "register_breb_key", { reference, key_value: keyValue });
-}
-
 export async function getBrebKeys() {
   return callBepay("bepay-charges", "get_breb_keys", {});
 }
@@ -74,29 +69,6 @@ export async function getBrebStaticQr(key: string) {
 
 export async function getBrebDynamicQr(key: string, amount: number, concept: string) {
   return callBepay("bepay-charges", "breb_dynamic_qr", { key, amount, concept });
-}
-
-// ── Bre-B — Onboarding comercio (registro en Bepay) ───────────────
-export async function registerBrebMerchant(payload: {
-  reference?: string;
-  mobile_number: string;
-  document_type: string;
-  document_number: string;
-  first_name: string;
-  middle_name?: string;
-  first_surname: string;
-  middle_surname?: string;
-  dane_code: string;
-  commerce_name: string;
-  email: string;
-  gender: "Masculino" | "Femenino";
-  address: string;
-  birth_place: string;
-  dob: string;
-  issue_date: string;
-  force?: boolean;
-}) {
-  return callBepay("bepay-charges", "breb_register", payload);
 }
 
 // ── Dispersiones ──────────────────────────────────────────────────
@@ -147,4 +119,16 @@ export async function getOnboardingStatus() {
 
 export async function getOnboardingUploadUrl(docType: string, ext = "jpg") {
   return callOnboarding("get_upload_url", { doc_type: docType, ext });
+}
+// ── Llaves virtuales (control interno, NO llama a Bepay) ──────────
+export async function createVirtualKey(reference?: string) {
+  return callBepay("bepay-charges", "create_virtual_key", { reference });
+}
+
+export async function getVirtualKeys() {
+  return callBepay("bepay-charges", "get_breb_keys", {});
+}
+
+export async function deactivateVirtualKey(keyId: string) {
+  return callBepay("bepay-charges", "deactivate_virtual_key", { key_id: keyId });
 }

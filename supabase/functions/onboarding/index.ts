@@ -263,3 +263,99 @@ serve(async (req) => {
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
+case "register_in_bepay": {
+  // Solo admin puede hacer esto
+  const { data: adminProfile } = await userClient
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  if (adminProfile?.role !== "admin") throw new Error("No autorizado");
+
+  const { onboarding_id, type } = payload;
+  if (!onboarding_id || !type) throw new Error("onboarding_id y type requeridos");
+
+  const table = type === "pn" ? "onboarding_pn" : "onboarding_emp";
+
+  // Traer datos del onboarding
+  const { data: ob, error: obErr } = await adminClient
+    .from(table)
+    .select("*")
+    .eq("id", onboarding_id)
+    .single();
+
+  if (obErr || !ob) throw new Error("Onboarding no encontrado");
+  if (ob.breb_registered) {
+    result = { success: true, message: "Ya estaba registrado en Bepay" };
+    break;
+  }
+
+  // Llamar a bepay-charges → breb_register con los datos del onboarding
+  const bepayPayload = type === "pn" ? {
+    mobile_number:   ob.phone?.replace(/\D/g, "") ?? "",
+    document_type:   ob.doc_type,
+    document_number: ob.doc_number,
+    first_name:      ob.first_name,
+    middle_name:     ob.middle_name ?? "",
+    first_surname:   ob.first_surname,
+    middle_surname:  ob.middle_surname ?? "",
+    dane_code:       ob.res_dane,
+    commerce_name:   ob.company || `${ob.first_name} ${ob.first_surname}`,
+    email:           ob.email,
+    gender:          "Masculino",
+    address:         ob.address ?? `Ciudad DANE ${ob.res_dane}`,
+    birth_place:     ob.birth_mun ?? "Colombia",
+    dob:             ob.date_of_birth,
+    issue_date:      ob.doc_issue_date,
+  } : {
+    mobile_number:   ob.phone?.replace(/\D/g, "") ?? "",
+    document_type:   ob.rl_doc_type,
+    document_number: ob.rl_doc_number,
+    first_name:      ob.rl_full_name.split(" ")[0] ?? ob.rl_full_name,
+    first_surname:   ob.rl_full_name.split(" ").slice(1).join(" ") || ob.rl_full_name,
+    dane_code:       ob.dane_code ?? "11001",
+    commerce_name:   ob.business_name,
+    email:           ob.email,
+    gender:          "Masculino",
+    address:         ob.address ?? `Ciudad DANE ${ob.dane_code ?? "11001"}`,
+    birth_place:     ob.rl_birth_mun ?? "Colombia",
+    dob:             ob.rl_date_of_birth ?? "1990-01-01",
+    issue_date:      ob.rl_doc_issue_date ?? "2010-01-01",
+  };
+
+  // Llamar a la función bepay-charges con el token del admin
+  const bepayRes = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/bepay-charges`, {
+    method: "POST",
+    headers: {
+      "Authorization": req.headers.get("Authorization")!,
+      "Content-Type":  "application/json",
+    },
+    body: JSON.stringify({ action: "breb_register", payload: bepayPayload }),
+  });
+  const bepayJson = await bepayRes.json();
+  console.log("Bepay breb_register resultado:", JSON.stringify(bepayJson));
+
+  // Actualizar el estado en la tabla de onboarding
+  await adminClient.from(table).update({
+    breb_registered: bepayJson.success === true,
+    breb_response:   bepayJson,
+    updated_at:      new Date().toISOString(),
+  }).eq("id", onboarding_id);
+
+  await adminClient.from("audit_log").insert({
+    user_id:   user.id,
+    action:    "BREB_REGISTER_AUTO",
+    entity:    table,
+    entity_id: onboarding_id,
+    metadata:  { success: bepayJson.success, message: bepayJson.message },
+  });
+
+  result = {
+    success: bepayJson.success,
+    breb_response: bepayJson,
+    message: bepayJson.success
+      ? "Registrado exitosamente en Bepay Bre-B"
+      : `Bepay respondió: ${JSON.stringify(bepayJson.message)}`,
+  };
+  break;
+}
