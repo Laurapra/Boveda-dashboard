@@ -50,6 +50,34 @@ async function writeAuditLog(
   });
 }
 
+async function checkOnboardingApproved(
+  adminClient: ReturnType<typeof createClient>,
+  userId: string
+): Promise<{ approved: boolean; status: string | null }> {
+  const { data: obPn } = await adminClient
+    .from("onboarding_pn")
+    .select("status")
+    .eq("user_id", userId)
+    .single();
+
+  const { data: obEmp } = await adminClient
+    .from("onboarding_emp")
+    .select("status")
+    .eq("user_id", userId)
+    .single();
+
+  const ob = obPn ?? obEmp;
+  if (!ob) return { approved: false, status: null };
+  return { approved: ob.status === "approved", status: ob.status };
+}
+
+function onboardingErrorMessage(status: string | null): string {
+  if (!status) return "Debes completar el Onboarding Bre-B antes de continuar. Ve a la sección 'Onboarding Bre-B' en el menú.";
+  if (status === "pending") return "Tu onboarding está pendiente de revisión. El administrador debe aprobarlo antes de continuar.";
+  if (status === "in_review") return "Tu onboarding está en revisión. Espera la aprobación del administrador.";
+  return "Tu onboarding fue rechazado. Corrige la información y envía una nueva solicitud.";
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -117,6 +145,11 @@ serve(async (req) => {
 
       // ── Crear link de cobro (con llave virtual opcional) ─────────
       case "create_link": {
+        if (profile.role !== "admin") {
+          const { approved, status } = await checkOnboardingApproved(adminClient, user.id);
+          if (!approved) throw new Error(onboardingErrorMessage(status));
+        }
+
         const amount     = validateAmount(payload?.amount);
         const concept    = sanitize(payload?.concept, 100);
         const virtualKey = payload?.virtual_key ? sanitize(payload.virtual_key, 30) : null;
@@ -173,6 +206,11 @@ serve(async (req) => {
 
       // ── Crear QR de cobro (con llave virtual opcional) ───────────
       case "create_qr": {
+        if (profile.role !== "admin") {
+          const { approved, status } = await checkOnboardingApproved(adminClient, user.id);
+          if (!approved) throw new Error(onboardingErrorMessage(status));
+        }
+
         const amount     = validateAmount(payload?.amount);
         const concept    = sanitize(payload?.concept, 100);
         const virtualKey = payload?.virtual_key ? sanitize(payload.virtual_key, 30) : null;
@@ -215,7 +253,6 @@ serve(async (req) => {
             .update({ status: statusResult.data.status, raw_response: statusResult.data, updated_at: new Date().toISOString() })
             .eq("bepay_ide", ide);
 
-          // Si se aprobó y tenía llave virtual, incrementa su total recibido
           if (statusResult.data.status === "APPROVED" && txOwner) {
             const { data: txFull } = await adminClient
               .from("bepay_transactions")
@@ -250,55 +287,54 @@ serve(async (req) => {
 
       // ── Crear llave VIRTUAL (no llama a Bepay) ────────────────────
       case "create_virtual_key": {
-  const reference = payload?.reference ? sanitize(payload.reference, 100) : null;
-  const userPart  = user.id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toLowerCase();
+        if (profile.role !== "admin") {
+          const { approved, status } = await checkOnboardingApproved(adminClient, user.id);
+          if (!approved) throw new Error(onboardingErrorMessage(status));
+        }
 
-  // Reintenta hasta 5 veces si hay choque de llave duplicada
-  let lastError: any = null;
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const { count } = await adminClient
-      .from("breb_keys")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", user.id);
+        const reference = payload?.reference ? sanitize(payload.reference, 100) : null;
+        const userPart  = user.id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toLowerCase();
 
-    const consecutivo = (count ?? 0) + 1 + attempt; // desplaza si hay colisión
-    const virtualKey  = `rmpx${userPart}${String(consecutivo).padStart(2, "0")}`;
+        let lastError: any = null;
+        for (let attempt = 0; attempt < 5; attempt++) {
+          const { count } = await adminClient
+            .from("breb_keys")
+            .select("*", { count: "exact", head: true })
+            .eq("user_id", user.id);
 
-    const { data, error } = await adminClient.from("breb_keys").insert({
-      user_id:          user.id,
-      key_value:        virtualKey,
-      reference,
-      consecutivo,
-      status:           "ACTIVE",
-      is_virtual:       true,
-      real_account_key: "@BETEST",
-      bepay_response:   { note: "Llave virtual interna" },
-    }).select().single();
+          const consecutivo = (count ?? 0) + 1 + attempt;
+          const virtualKey  = `rmpx${userPart}${String(consecutivo).padStart(2, "0")}`;
 
-    if (!error) {
-      await adminClient.from("audit_log").insert({
-        user_id:   user.id,
-        action:    "CREATE_VIRTUAL_KEY",
-        entity:    "breb_keys",
-        entity_id: data.id,
-        metadata:  { key_value: virtualKey, consecutivo },
-      });
-      result = { success: true, data };
-      break;
-    }
+          const { data, error } = await adminClient.from("breb_keys").insert({
+            user_id:          user.id,
+            key_value:        virtualKey,
+            reference,
+            consecutivo,
+            status:           "ACTIVE",
+            is_virtual:       true,
+            real_account_key: "@BETEST",
+            bepay_response:   { note: "Llave virtual interna" },
+          }).select().single();
 
-    // Si el error es de duplicado, reintenta con el siguiente número
-    if (error.code === "23505") {
-      lastError = error;
-      continue;
-    }
+          if (!error) {
+            await adminClient.from("audit_log").insert({
+              user_id:   user.id,
+              action:    "CREATE_VIRTUAL_KEY",
+              entity:    "breb_keys",
+              entity_id: data.id,
+              metadata:  { key_value: virtualKey, consecutivo },
+            });
+            result = { success: true, data };
+            break;
+          }
 
-    throw new Error(error.message);
-  }
+          if (error.code === "23505") { lastError = error; continue; }
+          throw new Error(error.message);
+        }
 
-  if (!result) throw new Error(lastError?.message ?? "No se pudo generar una llave única tras varios intentos");
-  break;
-}
+        if (!result) throw new Error(lastError?.message ?? "No se pudo generar una llave única tras varios intentos");
+        break;
+      }
 
       // ── Listar SOLO las llaves virtuales del usuario actual ───────
       case "get_breb_keys": {
@@ -310,6 +346,23 @@ serve(async (req) => {
 
         if (error) throw new Error(error.message);
         result = { success: true, data: localKeys ?? [] };
+        break;
+      }
+
+      // ── Admin: ver TODAS las llaves virtuales de todos los usuarios ──
+      case "get_all_virtual_keys": {
+        if (profile.role !== "admin") throw new Error("No autorizado");
+
+        const { data: allKeys, error } = await adminClient
+          .from("breb_keys")
+          .select(`
+            id, key_value, reference, consecutivo, status, total_received, created_at,
+            profiles!inner ( full_name, email )
+          `)
+          .order("created_at", { ascending: false });
+
+        if (error) throw new Error(error.message);
+        result = { success: true, data: allKeys ?? [] };
         break;
       }
 
@@ -403,7 +456,7 @@ serve(async (req) => {
           }
         }
 
-        const colombiaId = 48; // Confirmado por respuesta real de Bepay
+        const colombiaId = 48;
 
         const [regRes, citRes] = await Promise.all([
           fetch(`${BEPAY_BASE}/regions/${colombiaId}`, {

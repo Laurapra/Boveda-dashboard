@@ -132,3 +132,8 @@ export async function getVirtualKeys() {
 export async function deactivateVirtualKey(keyId: string) {
   return callBepay("bepay-charges", "deactivate_virtual_key", { key_id: keyId });
 }
+
+// ← AQUÍ, agrega esta nueva función
+export async function getAllVirtualKeys() {
+  return callBepay("bepay-charges", "get_all_virtual_keys", {});
+}
