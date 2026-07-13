@@ -9,23 +9,23 @@ const corsHeaders = {
 };
 
 async function getBepayToken(): Promise<string> {
-  const res = await fetch(`${BEPAY_BASE}/get-access-token`, {
+  const res = await fetch(BEPAY_BASE + "/get-access-token", {
     method: "POST",
     headers: { "Content-Type": "application/json", "Accept": "application/json" },
     body: JSON.stringify({
-      email:    Deno.env.get("BEPAY_EMAIL"),
+      email: Deno.env.get("BEPAY_EMAIL"),
       password: Deno.env.get("BEPAY_PASSWORD"),
     }),
   });
   const json = await res.json();
-  if (!json.success) throw new Error(`Bepay auth: ${json.message}`);
+  if (!json.success) throw new Error("Bepay auth: " + json.message);
   return json.data;
 }
 
 function validateAmount(amount: unknown): number {
   const n = Number(amount);
-  if (!Number.isInteger(n) || n < 1000)    throw new Error("Monto mínimo: $1.000 COP");
-  if (n > 50_000_000)                       throw new Error("Monto máximo: $50.000.000 COP");
+  if (!Number.isInteger(n) || n < 1000) throw new Error("Monto mínimo: $1.000 COP");
+  if (n > 50000000) throw new Error("Monto máximo: $50.000.000 COP");
   return n;
 }
 
@@ -36,13 +36,53 @@ function sanitize(value: unknown, maxLen = 255): string {
   return clean;
 }
 
+async function checkOnboardingApproved(
+  adminClient: ReturnType<typeof createClient>,
+  userId: string
+): Promise<{ approved: boolean; status: string | null }> {
+  const pnRes = await adminClient
+    .from("onboarding_pn")
+    .select("status")
+    .eq("user_id", userId)
+    .single();
+
+  const empRes = await adminClient
+    .from("onboarding_emp")
+    .select("status")
+    .eq("user_id", userId)
+    .single();
+
+  const ob = pnRes.data || empRes.data;
+  if (!ob) return { approved: false, status: null };
+  return { approved: ob.status === "approved", status: ob.status };
+}
+
+function onboardingErrorMessage(status: string | null): string {
+  if (!status) return "Debes completar el Onboarding Bre-B antes de dispersar. Ve a la sección 'Onboarding Bre-B' en el menú.";
+  if (status === "pending") return "Tu onboarding está pendiente de revisión. El administrador debe aprobarlo antes de dispersar.";
+  if (status === "in_review") return "Tu onboarding está en revisión. Espera la aprobación del administrador.";
+  return "Tu onboarding fue rechazado. Corrige la información y envía una nueva solicitud.";
+}
+
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
 
   try {
-    // ── Auth ──────────────────────────────────────────────────────
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) throw new Error("No autorizado");
+    let authHeader: string | null;
+    try {
+      authHeader = req.headers.get("Authorization");
+    } catch {
+      authHeader = null;
+    }
+
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ success: false, error: "No autorizado — falta Authorization header" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     const userClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -51,23 +91,56 @@ serve(async (req) => {
     );
 
     const { data: { user }, error: authErr } = await userClient.auth.getUser();
-    if (authErr || !user) throw new Error("Sesión inválida");
+    if (authErr || !user) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Sesión inválida" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     const { data: profile } = await userClient
       .from("profiles")
-      .select("is_active, tarifa_enviar, tarifa_variable, full_name")
+      .select("role, is_active, tarifa_enviar, tarifa_variable, full_name")
       .eq("id", user.id)
       .single();
 
-    if (!profile?.is_active) throw new Error("Cuenta desactivada");
+    if (!profile) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Perfil no encontrado" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    if (!profile.is_active) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Cuenta desactivada — contacta al administrador" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     const adminClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const { action, payload } = await req.json();
-    const token     = await getBepayToken();
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return new Response(
+        JSON.stringify({ success: false, error: "Cuerpo de la petición inválido" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const { action, payload } = body;
+    if (!action || typeof action !== "string") {
+      return new Response(
+        JSON.stringify({ success: false, error: "Acción requerida" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const token = await getBepayToken();
     const accountId = Number(Deno.env.get("BEPAY_ACCOUNT_ID"));
 
     let result;
@@ -78,8 +151,8 @@ serve(async (req) => {
       case "lookup_key": {
         const key = sanitize(payload?.key, 100);
         const res = await fetch(
-          `${BEPAY_BASE}/payout/get/${encodeURIComponent(key)}`,
-          { headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" } }
+          BEPAY_BASE + "/payout/get/" + encodeURIComponent(key),
+          { headers: { "Authorization": "Bearer " + token, "Accept": "application/json" } }
         );
         result = await res.json();
         break;
@@ -87,55 +160,53 @@ serve(async (req) => {
 
       // ── Dispersión Bre-B ───────────────────────────────────────
       case "payout_breb": {
-        const key     = sanitize(payload?.key, 100);
-        const amount  = validateAmount(payload?.amount);
+        if (profile.role !== "admin") {
+          const check = await checkOnboardingApproved(adminClient, user.id);
+          if (!check.approved) throw new Error(onboardingErrorMessage(check.status));
+        }
+
+        const key = sanitize(payload?.key, 100);
+        const amount = validateAmount(payload?.amount);
         const concept = sanitize(payload?.concept, 100);
 
-        // Calcular comisión con la tarifa del usuario
-        const comisionFija     = profile.tarifa_enviar ?? 1190;
+        const comisionFija = profile.tarifa_enviar ?? 1190;
         const comisionVariable = Math.round(amount * (profile.tarifa_variable ?? 0.0012));
-        const comisionTotal    = comisionFija + comisionVariable;
-        const reference        = `DISP-${user.id.slice(0,8)}-${Date.now()}`;
+        const comisionTotal = comisionFija + comisionVariable;
+        const reference = payload?.reference ? sanitize(payload.reference, 100) : "DISP-" + user.id.slice(0, 8) + "-" + Date.now();
 
-        const res = await fetch(`${BEPAY_BASE}/payout/breb/send`, {
+        const res = await fetch(BEPAY_BASE + "/payout/breb/send", {
           method: "POST",
-          headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json", "Accept": "application/json" },
+          headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json", "Accept": "application/json" },
           body: JSON.stringify({
             description: concept,
-            account_id:  accountId,
+            account_id: accountId,
             payouts: [{ key_number: key, account_value: amount }],
           }),
         });
         const bepayResult = await res.json();
 
-        // Guardar en DB independientemente del resultado
         const { data: txRow } = await adminClient.from("bepay_transactions").insert({
-          user_id:         user.id,
-          bepay_ide:       bepayResult.data?.ide ?? bepayResult.data?.id ?? reference,
-          type:            "payout",
+          user_id: user.id,
+          bepay_ide: (bepayResult.data && (bepayResult.data.ide || bepayResult.data.id)) || reference,
+          type: "payout",
           amount,
           concept,
-          status:          bepayResult.success ? "PENDING" : "FAILED",
-          account_type:    "Bre-B",
-          account_key:     key,
+          status: bepayResult.success ? "PENDING" : "FAILED",
+          account_type: "Bre-B",
+          account_key: key,
           reference,
           tarifa_aplicada: comisionFija,
           tarifa_variable: profile.tarifa_variable,
-          comision_total:  comisionTotal,
-          raw_response:    bepayResult.data ?? bepayResult,
+          comision_total: comisionTotal,
+          raw_response: bepayResult.data || bepayResult,
         }).select().single();
 
-        // Audit log (siempre — especialmente si falla)
         await adminClient.from("audit_log").insert({
-          user_id:   user.id,
-          action:    "PAYOUT_BREB",
-          entity:    "bepay_transaction",
-          entity_id: txRow?.id ?? reference,
-          metadata:  {
-            amount, key, concept,
-            success:       bepayResult.success,
-            comision_total: comisionTotal,
-          },
+          user_id: user.id,
+          action: "PAYOUT_BREB",
+          entity: "bepay_transaction",
+          entity_id: (txRow && txRow.id) || reference,
+          metadata: { amount, key, concept, success: bepayResult.success, comision_total: comisionTotal },
         });
 
         result = bepayResult;
@@ -144,60 +215,66 @@ serve(async (req) => {
 
       // ── Dispersión ACH ─────────────────────────────────────────
       case "payout_ach": {
-        const amount  = validateAmount(payload?.amount);
+        if (profile.role !== "admin") {
+          const check = await checkOnboardingApproved(adminClient, user.id);
+          if (!check.approved) throw new Error(onboardingErrorMessage(check.status));
+        }
+
+        const amount = validateAmount(payload?.amount);
         const concept = sanitize(payload?.concept, 100);
         if (!payload?.bank_code || !payload?.account_number || !payload?.account_type) {
           throw new Error("Banco, número y tipo de cuenta son requeridos");
         }
 
-        const comisionFija     = profile.tarifa_enviar ?? 1190;
+        const comisionFija = profile.tarifa_enviar ?? 1190;
         const comisionVariable = Math.round(amount * (profile.tarifa_variable ?? 0.0012));
-        const comisionTotal    = comisionFija + comisionVariable;
-        const reference        = `ACH-${user.id.slice(0,8)}-${Date.now()}`;
+        const comisionTotal = comisionFija + comisionVariable;
+        const reference = payload?.reference ? sanitize(payload.reference, 100) : "ACH-" + user.id.slice(0, 8) + "-" + Date.now();
 
-        const res = await fetch(`${BEPAY_BASE}/payout/ach/send`, {
+        const res = await fetch(BEPAY_BASE + "/payout/ach/send", {
           method: "POST",
-          headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json", "Accept": "application/json" },
+          headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json", "Accept": "application/json" },
           body: JSON.stringify({
-            account_id:      accountId,
-            bank_code:       payload.bank_code,
-            account_number:  sanitize(payload.account_number, 30),
-            account_type:    payload.account_type,
-            document_type:   payload.document_type,
+            account_id: accountId,
+            bank_code: payload.bank_code,
+            account_number: sanitize(payload.account_number, 30),
+            account_type: payload.account_type,
+            document_type: payload.document_type,
             document_number: sanitize(payload.document_number, 20),
-            name:            sanitize(payload.holder_name, 100),
+            name: sanitize(payload.holder_name, 100),
             amount,
-            description:     concept,
+            description: concept,
             reference,
           }),
         });
         const bepayResult = await res.json();
 
         await adminClient.from("bepay_transactions").insert({
-          user_id:         user.id,
-          bepay_ide:       bepayResult.data?.ide ?? reference,
-          type:            "payout",
-          amount, concept,
-          status:          bepayResult.success ? "PENDING" : "FAILED",
-          ben_name:        payload.holder_name,
-          ben_doc_type:    payload.document_type,
-          ben_doc_number:  payload.document_number,
-          account_type:    payload.account_type,
-          bank_name:       payload.bank_code,
-          account_key:     payload.account_number,
+          user_id: user.id,
+          bepay_ide: (bepayResult.data && bepayResult.data.ide) || reference,
+          type: "payout",
+          amount,
+          concept,
+          status: bepayResult.success ? "PENDING" : "FAILED",
+          ben_name: payload.holder_name,
+          ben_doc_type: payload.document_type,
+          ben_doc_number: payload.document_number,
+          account_type: payload.account_type,
+          bank_name: payload.bank_code,
+          account_key: payload.account_number,
           reference,
           tarifa_aplicada: comisionFija,
           tarifa_variable: profile.tarifa_variable,
-          comision_total:  comisionTotal,
-          raw_response:    bepayResult.data ?? bepayResult,
+          comision_total: comisionTotal,
+          raw_response: bepayResult.data || bepayResult,
         });
 
         await adminClient.from("audit_log").insert({
-          user_id:   user.id,
-          action:    "PAYOUT_ACH",
-          entity:    "bepay_transaction",
+          user_id: user.id,
+          action: "PAYOUT_ACH",
+          entity: "bepay_transaction",
           entity_id: reference,
-          metadata:  { amount, concept, bank_code: payload.bank_code, success: bepayResult.success },
+          metadata: { amount, concept, bank_code: payload.bank_code, success: bepayResult.success },
         });
 
         result = bepayResult;
@@ -206,8 +283,8 @@ serve(async (req) => {
 
       // ── Códigos de bancos ──────────────────────────────────────
       case "get_bank_codes": {
-        const res = await fetch(`${BEPAY_BASE}/payout/bankCodes`, {
-          headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
+        const res = await fetch(BEPAY_BASE + "/payout/bankCodes", {
+          headers: { "Authorization": "Bearer " + token, "Accept": "application/json" },
         });
         result = await res.json();
         break;
@@ -217,12 +294,12 @@ serve(async (req) => {
       case "payout_status": {
         const payoutId = sanitize(payload?.payout_id, 100);
         const res = await fetch(
-          `${BEPAY_BASE}/payout/status/${payoutId}/${accountId}`,
-          { headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" } }
+          BEPAY_BASE + "/payout/status/" + payoutId + "/" + accountId,
+          { headers: { "Authorization": "Bearer " + token, "Accept": "application/json" } }
         );
         const statusResult = await res.json();
 
-        if (statusResult.data?.status) {
+        if (statusResult.data && statusResult.data.status) {
           await adminClient.from("bepay_transactions")
             .update({ status: statusResult.data.status, updated_at: new Date().toISOString() })
             .eq("bepay_ide", payoutId);
@@ -233,19 +310,20 @@ serve(async (req) => {
 
       default:
         return new Response(
-          JSON.stringify({ success: false, error: `Acción '${action}' no reconocida` }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({ success: false, error: "Acción '" + action + "' no reconocida" }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
     }
 
     return new Response(JSON.stringify(result), {
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
   } catch (err) {
-    console.error("[bepay-payouts]", err.message);
+    console.error("[bepay-payouts]", err instanceof Error ? err.message : String(err));
     return new Response(
-      JSON.stringify({ success: false, error: err.message }),
+      JSON.stringify({ success: false, error: err instanceof Error ? err.message : "Error desconocido" }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

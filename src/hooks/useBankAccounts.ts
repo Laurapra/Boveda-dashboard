@@ -6,6 +6,7 @@ import type { BankAccount, AccountType, DocumentType } from "../types";
 
 interface NewAccountInput {
   bankName: string;
+  bankCode?: string;
   accountNumber: string;
   accountType: AccountType;
   accountHolderName: string;
@@ -40,20 +41,20 @@ export function useBankAccounts() {
     fetchAccounts();
   }, [fetchAccounts]);
 
-  // Crear una cuenta nueva
   const addAccount = async (input: NewAccountInput): Promise<string | null> => {
     if (!user) return "No hay sesión activa";
 
     const { error: insertError } = await supabase.from("bank_accounts").insert({
       user_id: user.id,
       bank_name: input.bankName,
+      bank_code: input.bankCode ?? null,
       account_number: input.accountNumber,
       account_type: input.accountType,
       account_holder_name: input.accountHolderName,
       document_type: input.documentType,
       document_number: input.documentNumber,
-      is_verified: false, // empieza sin verificar — se aprueba manualmente o vía proceso externo
-      is_default: accounts.length === 0, // la primera cuenta es default automáticamente
+      is_verified: false,
+      is_default: accounts.length === 0,
     });
 
     if (insertError) return insertError.message;
@@ -62,7 +63,6 @@ export function useBankAccounts() {
     return null;
   };
 
-  // Marcar una cuenta como predeterminada
   const setDefault = async (accountId: string): Promise<string | null> => {
     const { error: updateError } = await supabase
       .from("bank_accounts")
@@ -74,7 +74,6 @@ export function useBankAccounts() {
     return null;
   };
 
-  // Eliminar una cuenta
   const deleteAccount = async (accountId: string): Promise<string | null> => {
     const { error: deleteError } = await supabase
       .from("bank_accounts")

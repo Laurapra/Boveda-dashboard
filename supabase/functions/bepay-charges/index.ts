@@ -482,6 +482,127 @@ serve(async (req) => {
         result = { success: true, data: geoData, from_cache: false };
         break;
       }
+      // ── Tipos de documento (con caché) ────────────────────────────
+      case "get_document_types": {
+        const { data: cached } = await adminClient
+          .from("geo_cache")
+          .select("data, updated_at")
+          .eq("key", "document_types")
+          .single();
+
+        if (cached) {
+          const age = Date.now() - new Date(cached.updated_at).getTime();
+          if (age < 24 * 60 * 60 * 1000) {
+            result = { success: true, data: cached.data, from_cache: true };
+            break;
+          }
+        }
+
+        const res = await fetch(`${BEPAY_BASE}/documentTypes`, {
+          headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(`Error tipos de documento: ${JSON.stringify(json.message)}`);
+
+        await adminClient.from("geo_cache").upsert({
+          key: "document_types", data: json.data, updated_at: new Date().toISOString(),
+        });
+
+        result = { success: true, data: json.data, from_cache: false };
+        break;
+      }
+
+      // ── Bancos (con caché) ─────────────────────────────────────────
+      case "get_banks": {
+        const { data: cached } = await adminClient
+          .from("geo_cache")
+          .select("data, updated_at")
+          .eq("key", "banks")
+          .single();
+
+        if (cached) {
+          const age = Date.now() - new Date(cached.updated_at).getTime();
+          if (age < 24 * 60 * 60 * 1000) {
+            result = { success: true, data: cached.data, from_cache: true };
+            break;
+          }
+        }
+
+        const perPage = payload?.per_page ?? 100;
+        const res = await fetch(`${BEPAY_BASE}/Banks?per_page=${perPage}`, {
+          headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(`Error bancos: ${JSON.stringify(json.message)}`);
+
+        await adminClient.from("geo_cache").upsert({
+          key: "banks", data: json.data, updated_at: new Date().toISOString(),
+        });
+
+        result = { success: true, data: json.data, from_cache: false };
+        break;
+      }
+
+      // ── Bancos PSE (con caché) ───────────────────────────────────────
+      case "get_pse_banks": {
+        const { data: cached } = await adminClient
+          .from("geo_cache")
+          .select("data, updated_at")
+          .eq("key", "pse_banks")
+          .single();
+
+        if (cached) {
+          const age = Date.now() - new Date(cached.updated_at).getTime();
+          if (age < 24 * 60 * 60 * 1000) {
+            result = { success: true, data: cached.data, from_cache: true };
+            break;
+          }
+        }
+
+        const res = await fetch(`${BEPAY_BASE}/pseBanks`, {
+          headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(`Error bancos PSE: ${JSON.stringify(json.message)}`);
+
+        await adminClient.from("geo_cache").upsert({
+          key: "pse_banks", data: json.data, updated_at: new Date().toISOString(),
+        });
+
+        result = { success: true, data: json.data, from_cache: false };
+        break;
+      }
+
+      // ── Códigos CIIU (con caché) ──────────────────────────────────
+      case "get_ciiu_codes": {
+        const { data: cached } = await adminClient
+          .from("geo_cache")
+          .select("data, updated_at")
+          .eq("key", "ciiu_codes")
+          .single();
+
+        if (cached) {
+          const age = Date.now() - new Date(cached.updated_at).getTime();
+          if (age < 24 * 60 * 60 * 1000) {
+            result = { success: true, data: cached.data, from_cache: true };
+            break;
+          }
+        }
+
+        const perPage = payload?.per_page ?? 100;
+        const res = await fetch(`${BEPAY_BASE}/ciiuCodes?per_page=${perPage}`, {
+          headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(`Error códigos CIIU: ${JSON.stringify(json.message)}`);
+
+        await adminClient.from("geo_cache").upsert({
+          key: "ciiu_codes", data: json.data, updated_at: new Date().toISOString(),
+        });
+
+        result = { success: true, data: json.data, from_cache: false };
+        break;
+      }
 
       default:
         return new Response(

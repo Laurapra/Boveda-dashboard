@@ -7,6 +7,10 @@ export interface User {
   email: string;
   full_name: string;
   role: "admin" | "operator" | "viewer";
+  tarifa_recibir?: number;
+  tarifa_enviar?: number;
+  tarifa_variable?: number;
+  is_active?: boolean;
   created_at: string;
 }
 
@@ -65,16 +69,17 @@ export type DocumentType="cedula"|"nit"|"pasaporte";
 
 export interface BankAccount {
   id: string;
-  user_id:string;
-  bank_name:string;
-  account_number:string;
-  account_type:AccountType;
-  account_holder_name:string;
-  document_type:DocumentType;
-  document_number:string;
-  is_verified:boolean;
-  is_default:boolean;
-  created_at:string;
+  user_id: string;
+  bank_name: string;
+  bank_code?: string | null;
+  account_number: string;
+  account_type: AccountType;
+  account_holder_name: string;
+  document_type: DocumentType;
+  document_number: string;
+  is_verified: boolean;
+  is_default: boolean;
+  created_at: string;
 }
 // ── KYC / KYB ────────────────────────────────────────────────────
 export type KycStatus = "not_submitted" | "pending" | "approved" | "rejected";

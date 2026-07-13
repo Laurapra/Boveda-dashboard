@@ -23,7 +23,10 @@ import { MovimientosView }   from "./pages/Movimientos";
 import { BeneficiariosView } from "./pages/Beneficiarios";
 import { TarifasView }       from "./pages/Tarifas";
 import { ReportesView }      from "./pages/Reportes";
-import {AdminView} from "./pages/Admin";
+import { AdminView }         from "./pages/Admin";
+
+// Modal de creación de links/QR
+import { CreateLinkModal } from "./components/CreateLinkModal";
 
 type AuthScreen = "login" | "register";
 
@@ -42,7 +45,7 @@ const PAGE_INFO: Record<ViewKey, { title: string; sub: string }> = {
   reportes:            { title: "Reportes",            sub: "Descarga reportes en PDF o XML" },
   kyc:                 { title: "Verificación KYC",    sub: "Completa tu verificación para operar en la plataforma" },
   onboarding:          { title: "Onboarding Bre-B",    sub: "Registro único de tu comercio en el ecosistema Bre-B" },
-  admin: { title: "Panel de Administración", sub: "Gestiona usuarios y tarifas" },
+  admin:               { title: "Panel de Administración", sub: "Gestiona usuarios y tarifas" },
 };
 
 export default function App() {
@@ -51,6 +54,7 @@ export default function App() {
   const [view, setView]             = useState<ViewKey>("home");
   const [theme, setTheme]           = useState<"dark" | "light">("dark");
   const { toasts, addToast, removeToast } = useToast();
+  const [createLinkOpen, setCreateLinkOpen] = useState(false);
 
   useEffect(() => { loadSession(); }, []);
 
@@ -126,8 +130,15 @@ export default function App() {
               Mesa P2P · Principal
             </div>
             <button
-              onClick={() => addToast("info", "Próximamente", "Modal de creación de links")}
-              style={{ display: "inline-flex", alignItems: "center", gap: "7px", padding: "9px 14px", borderRadius: "var(--radius-sm)", fontWeight: 600, fontSize: "13px", background: "var(--accent)", color: "#fff", border: "none", cursor: "pointer", boxShadow: "0 6px 16px -8px var(--accent-ring)" }}
+              onClick={() => setCreateLinkOpen(true)}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: "7px",
+                padding: "9px 14px", borderRadius: "var(--radius-sm)",
+                fontWeight: 600, fontSize: "13px",
+                background: "var(--accent)", color: "#fff",
+                border: "none", cursor: "pointer",
+                boxShadow: "0 6px 16px -8px var(--accent-ring)",
+              }}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="15" height="15">
                 <path d="M12 5v14M5 12h14" strokeLinecap="round" />
@@ -146,7 +157,7 @@ export default function App() {
           {view === "cuentas-bancarias" && <BankAccountsView onToast={addToast} />}
           {view === "kyc"               && <KycView          onToast={addToast} />}
           {view === "onboarding"        && <OnboardingView   onToast={addToast} />}
-          {view === "admin" && <AdminView onToast={addToast} />}
+          {view === "admin"             && <AdminView        onToast={addToast} />}
 
           {/* Páginas nuevas */}
           {view === "billeteras"    && <BilleterasView    fmt={fmt} onToast={addToast} />}
@@ -157,6 +168,13 @@ export default function App() {
 
         </main>
       </div>
+
+      {/* Modal de creación de link/QR de pago */}
+      <CreateLinkModal
+        isOpen={createLinkOpen}
+        onClose={() => setCreateLinkOpen(false)}
+        onToast={addToast}
+      />
 
       <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>

@@ -30,12 +30,12 @@ export async function getPaymentMethods() {
 }
 
 // ── Cobros ────────────────────────────────────────────────────────
-export async function createPaymentLink(amount: number, concept: string, redirectUrl?: string) {
-  return callBepay("bepay-charges", "create_link", { amount, concept, redirect_url: redirectUrl });
+export async function createPaymentLink(amount: number, concept: string, virtualKey?: string, redirectUrl?: string) {
+  return callBepay("bepay-charges", "create_link", { amount, concept, virtual_key: virtualKey, redirect_url: redirectUrl });
 }
 
-export async function createPaymentQR(amount: number, concept: string) {
-  return callBepay("bepay-charges", "create_qr", { amount, concept });
+export async function createPaymentQR(amount: number, concept: string, virtualKey?: string) {
+  return callBepay("bepay-charges", "create_qr", { amount, concept, virtual_key: virtualKey });
 }
 
 export async function sendWhatsAppCharge(amount: number, concept: string, phone: string) {
@@ -136,4 +136,20 @@ export async function deactivateVirtualKey(keyId: string) {
 // ← AQUÍ, agrega esta nueva función
 export async function getAllVirtualKeys() {
   return callBepay("bepay-charges", "get_all_virtual_keys", {});
+}
+// ── Catálogos de Bepay (tipos doc, bancos, CIIU) ──────────────────
+export async function getDocumentTypes() {
+  return callBepay("bepay-charges", "get_document_types", {});
+}
+
+export async function getBanks(perPage = 100) {
+  return callBepay("bepay-charges", "get_banks", { per_page: perPage });
+}
+
+export async function getPseBanks() {
+  return callBepay("bepay-charges", "get_pse_banks", {});
+}
+
+export async function getCiiuCodes(perPage = 100) {
+  return callBepay("bepay-charges", "get_ciiu_codes", { per_page: perPage });
 }
