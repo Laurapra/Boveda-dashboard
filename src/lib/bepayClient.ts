@@ -93,7 +93,22 @@ export async function sendPayoutAch(payload: {
   concept: string;
   reference: string;
 }) {
-  return callBepay("bepay-payouts", "payout_ach", payload);
+  const idTypeMap: Record<string, string> = {
+    CC: "C",
+    CE: "E",
+    NIT: "N",
+    PAS: "P",
+  };
+  const accountTypeMap: Record<string, string> = {
+    corriente: "1",
+    ahorros: "2",
+  };
+
+  return callBepay("bepay-payouts", "payout_ach", {
+    ...payload,
+    identification_type: idTypeMap[payload.document_type] || "C",
+    account_type_code: accountTypeMap[payload.account_type] || "2",
+  });
 }
 
 export async function getBankCodes() {

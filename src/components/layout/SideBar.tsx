@@ -6,12 +6,10 @@ export type ViewKey =
   | "home"
   | "billeteras"
   | "movimientos"
-  | "beneficiarios"
   | "cuenta"
-  | "cuentas-bancarias"
+  | "cuentas"
   | "tarifas"
   | "reportes"
-  | "kyc"
   | "admin"
   | "onboarding";
 
@@ -51,16 +49,12 @@ const NAV: NavItem[] = [
     icon: Ico(<path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4" strokeLinecap="round" strokeLinejoin="round" />),
   },
   {
-    key: "beneficiarios", label: "Beneficiarios",
+    key: "cuentas", label: "Cuentas",
     icon: Ico(<><circle cx="9" cy="7" r="3" /><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" strokeLinecap="round" /><path d="M16 11c1.7 0 3 1.3 3 3s-1.3 3-3 3" strokeLinecap="round" /><path d="M19 20c1.7-.5 3-2 3-4" strokeLinecap="round" /></>),
   },
   {
     key: "cuenta", label: "Estado de Cuenta", section: "Cuenta",
     icon: Ico(<><path d="M4 5h16v14H4z" /><path d="M4 9h16M8 13h5" strokeLinecap="round" /></>),
-  },
-  {
-    key: "cuentas-bancarias", label: "Cuentas Bancarias",
-    icon: Ico(<><rect x="3" y="6" width="18" height="13" rx="2" /><path d="M3 10h18M7 15h3" strokeLinecap="round" /></>),
   },
   {
     key: "tarifas", label: "Mis tarifas",
@@ -69,10 +63,6 @@ const NAV: NavItem[] = [
   {
     key: "reportes", label: "Reportes",
     icon: Ico(<><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h4" strokeLinecap="round" /></>),
-  },
-  {
-    key: "kyc", label: "Verificación KYC",
-    icon: Ico(<><circle cx="9" cy="8" r="3" /><path d="M3 20c0-3 3-5 6-5s6 2 6 5M16 11l2 2 4-4" strokeLinecap="round" strokeLinejoin="round" /></>),
   },
   {
     key: "onboarding", label: "Onboarding Bre-B", badge: "!",

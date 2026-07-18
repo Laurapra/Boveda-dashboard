@@ -214,6 +214,7 @@ serve(async (req) => {
       }
 
       // ── Dispersión ACH ─────────────────────────────────────────
+      // ── Dispersión ACH ─────────────────────────────────────────
       case "payout_ach": {
         if (profile.role !== "admin") {
           const check = await checkOnboardingApproved(adminClient, user.id);
@@ -222,8 +223,8 @@ serve(async (req) => {
 
         const amount = validateAmount(payload?.amount);
         const concept = sanitize(payload?.concept, 100);
-        if (!payload?.bank_code || !payload?.account_number || !payload?.account_type) {
-          throw new Error("Banco, número y tipo de cuenta son requeridos");
+        if (!payload?.bank_code || !payload?.account_number || !payload?.account_type_code || !payload?.identification_type) {
+          throw new Error("Faltan datos de la cuenta bancaria o del beneficiario");
         }
 
         const comisionFija = profile.tarifa_enviar ?? 1190;
@@ -236,22 +237,25 @@ serve(async (req) => {
           headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json", "Accept": "application/json" },
           body: JSON.stringify({
             account_id: accountId,
-            bank_code: payload.bank_code,
-            account_number: sanitize(payload.account_number, 30),
-            account_type: payload.account_type,
-            document_type: payload.document_type,
-            document_number: sanitize(payload.document_number, 20),
-            name: sanitize(payload.holder_name, 100),
-            amount,
             description: concept,
-            reference,
+            payouts: [
+              {
+                identification_type: payload.identification_type,
+                identification_number: sanitize(payload.document_number, 20),
+                beneficiary_name: sanitize(payload.holder_name, 40),
+                account_type: payload.account_type_code,
+                account_number: sanitize(payload.account_number, 17),
+                bank_code: payload.bank_code,
+                account_value: amount,
+              },
+            ],
           }),
         });
         const bepayResult = await res.json();
 
         await adminClient.from("bepay_transactions").insert({
           user_id: user.id,
-          bepay_ide: (bepayResult.data && bepayResult.data.ide) || reference,
+          bepay_ide: (bepayResult.data && String(bepayResult.data.id)) || reference,
           type: "payout",
           amount,
           concept,

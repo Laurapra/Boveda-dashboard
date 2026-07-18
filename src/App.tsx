@@ -13,14 +13,12 @@ import { Sidebar, type ViewKey } from "./components/layout/SideBar";
 // Páginas existentes
 import { HomeView }         from "./pages/Home";
 import { EstadoCuentaView } from "./pages/EstadoCuenta";
-import { BankAccountsView } from "./pages/BankAccounts";
-import { KycView }          from "./pages/Kyc";
 import { OnboardingView }   from "./pages/Onboarding";
+import { CuentasView }      from "./pages/Cuentas";
 
 // Páginas nuevas
 import { BilleterasView }    from "./pages/Billeteras";
 import { MovimientosView }   from "./pages/Movimientos";
-import { BeneficiariosView } from "./pages/Beneficiarios";
 import { TarifasView }       from "./pages/Tarifas";
 import { ReportesView }      from "./pages/Reportes";
 import { AdminView }         from "./pages/Admin";
@@ -35,17 +33,15 @@ const COP = new Intl.NumberFormat("es-CO", {
 });
 
 const PAGE_INFO: Record<ViewKey, { title: string; sub: string }> = {
-  home:                { title: "Inicio",              sub: "Bienvenido al portal Global Coin" },
-  billeteras:          { title: "Mis billeteras",      sub: "Gestiona tus cuentas en diferentes divisas" },
-  movimientos:         { title: "Movimientos",         sub: "Historial de dispersiones realizadas" },
-  beneficiarios:       { title: "Beneficiarios",       sub: "Gestiona tus beneficiarios y sus cuentas bancarias" },
-  cuenta:              { title: "Estado de Cuenta",    sub: "Movimientos, comisiones y reportes financieros" },
-  "cuentas-bancarias": { title: "Cuentas Bancarias",   sub: "Gestiona las cuentas para tus dispersiones" },
-  tarifas:             { title: "Mis tarifas",         sub: "Comisiones y costos por operación" },
-  reportes:            { title: "Reportes",            sub: "Descarga reportes en PDF o XML" },
-  kyc:                 { title: "Verificación KYC",    sub: "Completa tu verificación para operar en la plataforma" },
-  onboarding:          { title: "Onboarding Bre-B",    sub: "Registro único de tu comercio en el ecosistema Bre-B" },
-  admin:               { title: "Panel de Administración", sub: "Gestiona usuarios y tarifas" },
+  home:        { title: "Inicio",              sub: "Bienvenido al portal Global Coin" },
+  billeteras:  { title: "Mis billeteras",       sub: "Gestiona tus cuentas en diferentes divisas" },
+  movimientos: { title: "Movimientos",          sub: "Historial de dispersiones realizadas" },
+  cuentas:     { title: "Cuentas",              sub: "Gestiona tus cuentas bancarias y beneficiarios" },
+  cuenta:      { title: "Estado de Cuenta",     sub: "Movimientos, comisiones y reportes financieros" },
+  tarifas:     { title: "Mis tarifas",          sub: "Comisiones y costos por operación" },
+  reportes:    { title: "Reportes",             sub: "Descarga reportes en PDF o XML" },
+  onboarding:  { title: "Onboarding Bre-B",     sub: "Registro único de tu comercio en el ecosistema Bre-B" },
+  admin:       { title: "Panel de Administración", sub: "Gestiona usuarios y tarifas" },
 };
 
 export default function App() {
@@ -152,19 +148,17 @@ export default function App() {
         <main style={{ flex: 1, overflowY: "auto", padding: "22px 26px" }}>
 
           {/* Páginas existentes */}
-          {view === "home"              && <HomeView         fmt={fmt} onToast={addToast} />}
-          {view === "cuenta"            && <EstadoCuentaView fmt={fmt} onToast={addToast} />}
-          {view === "cuentas-bancarias" && <BankAccountsView onToast={addToast} />}
-          {view === "kyc"               && <KycView          onToast={addToast} />}
-          {view === "onboarding"        && <OnboardingView   onToast={addToast} />}
-          {view === "admin"             && <AdminView        onToast={addToast} />}
+          {view === "home"       && <HomeView         fmt={fmt} onToast={addToast} />}
+          {view === "cuenta"     && <EstadoCuentaView fmt={fmt} onToast={addToast} />}
+          {view === "onboarding" && <OnboardingView   onToast={addToast} />}
+          {view === "admin"      && <AdminView        onToast={addToast} />}
 
           {/* Páginas nuevas */}
-          {view === "billeteras"    && <BilleterasView    fmt={fmt} onToast={addToast} />}
-          {view === "movimientos"   && <MovimientosView   fmt={fmt} onToast={addToast} />}
-          {view === "beneficiarios" && <BeneficiariosView onToast={addToast} />}
-          {view === "tarifas"       && <TarifasView />}
-          {view === "reportes"      && <ReportesView      fmt={fmt} />}
+          {view === "billeteras"  && <BilleterasView  fmt={fmt} onToast={addToast} />}
+          {view === "movimientos" && <MovimientosView fmt={fmt} onToast={addToast} />}
+          {view === "cuentas"     && <CuentasView     onToast={addToast} />}
+          {view === "tarifas"     && <TarifasView />}
+          {view === "reportes"    && <ReportesView    fmt={fmt} />}
 
         </main>
       </div>
