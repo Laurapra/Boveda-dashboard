@@ -78,8 +78,15 @@ export const ReportesView: React.FC<Props> = ({ fmt }) => {
   }, [user, isAdmin]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+  let cancelled = false;
+  Promise.resolve().then(async () => {
+    if (cancelled) return;
+    await load();
+  });
+  return () => {
+    cancelled = true;
+  };
+}, [load]);
 
   // Realtime — el reporte se mantiene actualizado sin recargar manualmente
   useEffect(() => {
