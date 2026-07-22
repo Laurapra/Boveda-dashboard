@@ -168,6 +168,9 @@ serve(async (req) => {
         const key = sanitize(payload?.key, 100);
         const amount = validateAmount(payload?.amount);
         const concept = sanitize(payload?.concept, 100);
+        // Banco real identificado por la API al verificar la llave (lookup_key),
+        // enviado desde el frontend. Si no viene, se guarda null en vez de un texto fijo.
+        const bankName = payload?.bank_name ? sanitize(payload.bank_name, 60) : null;
 
         const comisionFija = profile.tarifa_enviar ?? 1190;
         const comisionVariable = Math.round(amount * (profile.tarifa_variable ?? 0.0012));
@@ -194,6 +197,7 @@ serve(async (req) => {
           status: bepayResult.success ? "PENDING" : "FAILED",
           account_type: "Bre-B",
           account_key: key,
+          bank_name: bankName,
           reference,
           tarifa_aplicada: comisionFija,
           tarifa_variable: profile.tarifa_variable,
@@ -206,14 +210,13 @@ serve(async (req) => {
           action: "PAYOUT_BREB",
           entity: "bepay_transaction",
           entity_id: (txRow && txRow.id) || reference,
-          metadata: { amount, key, concept, success: bepayResult.success, comision_total: comisionTotal },
+          metadata: { amount, key, concept, bank_name: bankName, success: bepayResult.success, comision_total: comisionTotal },
         });
 
         result = bepayResult;
         break;
       }
 
-      // ── Dispersión ACH ─────────────────────────────────────────
       // ── Dispersión ACH ─────────────────────────────────────────
       case "payout_ach": {
         if (profile.role !== "admin") {

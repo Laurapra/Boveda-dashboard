@@ -21,7 +21,6 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/jspdf": "^2.0.0",
     "@types/node": "^24.12.3",
     "@types/papaparse": "^5.5.2",
     "@types/react": "^19.2.14",

@@ -77,9 +77,9 @@ export async function lookupBrebKey(key: string) {
 }
 
 export async function sendPayoutBreb(
-  key: string, amount: number, concept: string, reference: string
+  key: string, amount: number, concept: string, reference: string, bankName?: string,
 ) {
-  return callBepay("bepay-payouts", "payout_breb", { key, amount, concept, reference });
+  return callBepay("bepay-payouts", "payout_breb", { key, amount, concept, reference, bank_name:bankName });
 }
 
 export async function sendPayoutAch(payload: {

@@ -1,6 +1,7 @@
 // src/components/layout/Sidebar.tsx
 import React from "react";
 import { useAuthStore } from "../../store/authStore";
+import Logo from "../../assets/Logo.png";
 
 export type ViewKey =
   | "home"
@@ -28,6 +29,7 @@ interface NavItem {
   icon: React.ReactNode;
 }
 
+// ✅ Restaurado: genera el SVG único de cada ítem, usando el path que recibe
 const Ico = (path: React.ReactNode) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
     width="17" height="17" style={{ flexShrink: 0 }}>
@@ -65,7 +67,7 @@ const NAV: NavItem[] = [
     icon: Ico(<><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h4" strokeLinecap="round" /></>),
   },
   {
-    key: "onboarding", label: "Onboarding Bre-B", badge: "!",
+    key: "onboarding", label: "Onboarding",
     icon: Ico(<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" strokeLinecap="round" strokeLinejoin="round" />),
   },
   {
@@ -89,16 +91,13 @@ export const Sidebar: React.FC<Props> = ({ active, onNav, theme, onToggleTheme }
       height: "100vh", position: "sticky", top: 0,
     }}>
 
-      {/* ── Logo ── */}
+      {/* ── Logo real de la empresa ── */}
       <div style={{ display: "flex", alignItems: "center", gap: "11px", padding: "20px 20px 18px", borderBottom: "1px solid var(--border)" }}>
-        <div style={{ width: "32px", height: "32px", borderRadius: "9px", background: "linear-gradient(140deg, var(--accent), #7c5cff)", display: "grid", placeItems: "center", flexShrink: 0, boxShadow: "0 4px 14px -4px var(--accent-ring)" }}>
-          <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
-            <path d="M12 2L3 6.5v6c0 5 3.9 8.4 9 9.5 5.1-1.1 9-4.5 9-9.5v-6L12 2z" fill="#fff" opacity=".95" />
-            <path d="M9 12l2 2 4-4" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
+        <div style={{ width: "36px", height: "36px", borderRadius: "9px", overflow: "hidden", flexShrink: 0 }}>
+          <img src={Logo} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
         </div>
         <div>
-          <div style={{ fontWeight: 700, fontSize: "15px", letterSpacing: "-.2px" }}>Global Coin SAS</div>
+          <div style={{ fontWeight: 700, fontSize: "15px", letterSpacing: "-.2px" }}>RAMPLIX</div>
           <div style={{ fontSize: "10.5px", color: "var(--t3)", letterSpacing: ".3px" }}>Portal · Ramplix</div>
         </div>
       </div>
@@ -148,7 +147,6 @@ export const Sidebar: React.FC<Props> = ({ active, onNav, theme, onToggleTheme }
 
       {/* ── Footer ── */}
       <div style={{ borderTop: "1px solid var(--border)", padding: "12px" }}>
-        {/* Toggle tema */}
         <button
           onClick={onToggleTheme}
           style={{ display: "flex", alignItems: "center", gap: "9px", width: "100%", padding: "8px 10px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--elevated)", color: "var(--t2)", fontSize: "12.5px", fontWeight: 500, marginBottom: "8px", cursor: "pointer", transition: ".14s" }}
@@ -171,7 +169,6 @@ export const Sidebar: React.FC<Props> = ({ active, onNav, theme, onToggleTheme }
           )}
         </button>
 
-        {/* Usuario */}
         <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px", borderRadius: "var(--radius-sm)" }}>
           <div style={{ width: "30px", height: "30px", borderRadius: "8px", background: "linear-gradient(135deg, #2dd4bf, var(--accent))", display: "grid", placeItems: "center", fontWeight: 700, fontSize: "12px", color: "#fff", flexShrink: 0 }}>
             {initials}

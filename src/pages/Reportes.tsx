@@ -23,19 +23,6 @@ interface TxRow {
   created_at: string;
 }
 
-interface AutoTableCellHookData {
-  section: "head" | "body" | "foot";
-  column: { index: number };
-  cell: {
-    text: string[];
-    styles: {
-      textColor?: number[];
-      fontStyle?: string;
-      [key: string]: unknown;
-    };
-  };
-}
-
 const REPORT_TYPES: { key: ReportType; name: string; desc: string; icon: string; color: string }[] = [
   { key: "extracto", name: "Extracto de cuenta", desc: "Todas las transacciones del período", icon: "ti-file-text", color: "var(--error)" },
   { key: "dispersiones", name: "Dispersiones", desc: "Envíos realizados en el período", icon: "ti-send", color: "var(--accent)" },
@@ -217,7 +204,7 @@ export const ReportesView: React.FC<Props> = ({ fmt }) => {
             5: { cellWidth: 26, halign: "right" },
             6: { cellWidth: 24 },
           },
-          didParseCell: (data: AutoTableCellHookData) => {
+          didParseCell: (data) => {
             if (data.section === "body") {
               if (data.column.index === 4) {
                 const v = String(data.cell.text[0]);

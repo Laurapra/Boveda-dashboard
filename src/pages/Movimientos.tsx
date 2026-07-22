@@ -345,7 +345,7 @@ export const MovimientosView: React.FC<Props> = ({ fmt, onToast }) => {
       const concept = "Dispersión a " + selectedBen.full_name;
 
       if (selectedCta.account_type === "Bre-B") {
-        res = await sendPayoutBreb(selectedCta.account_key, rawMonto, concept, reference);
+        res = await sendPayoutBreb(selectedCta.account_key, rawMonto, concept, reference, lookup?.bank ?? undefined);
       } else {
         const bankMatch = findBankCode(bankCodes, selectedCta.bank_name);
         const bankCode = bankMatch ? bankMatch.code : "";
@@ -390,7 +390,7 @@ export const MovimientosView: React.FC<Props> = ({ fmt, onToast }) => {
         ben_doc_type: selectedBen.doc_type,
         ben_doc_number: selectedBen.doc_number,
         account_type: selectedCta.account_type,
-        bank_name: selectedCta.bank_name,
+        bank_name: selectedCta.account_type === "Bre-B" ? (lookup?.bank ?? "Sin identificar") : selectedCta.bank_name,
         account_key: selectedCta.account_key,
         tarifa_aplicada: tarifaFijo,
         comision_total: comision ? comision.total : null,

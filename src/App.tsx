@@ -33,7 +33,7 @@ const COP = new Intl.NumberFormat("es-CO", {
 });
 
 const PAGE_INFO: Record<ViewKey, { title: string; sub: string }> = {
-  home:        { title: "Inicio",              sub: "Bienvenido al portal Global Coin" },
+  home:        { title: "Inicio",              sub: "Bienvenido al portal Ramplix" },
   billeteras:  { title: "Mis billeteras",       sub: "Gestiona tus cuentas en diferentes divisas" },
   movimientos: { title: "Movimientos",          sub: "Historial de dispersiones realizadas" },
   cuentas:     { title: "Cuentas",              sub: "Gestiona tus cuentas bancarias y beneficiarios" },
