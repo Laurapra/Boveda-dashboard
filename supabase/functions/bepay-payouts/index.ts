@@ -171,6 +171,9 @@ serve(async (req) => {
         // Banco real identificado por la API al verificar la llave (lookup_key),
         // enviado desde el frontend. Si no viene, se guarda null en vez de un texto fijo.
         const bankName = payload?.bank_name ? sanitize(payload.bank_name, 60) : null;
+        const benName = payload?.ben_name ? sanitize(payload.ben_name, 100) : null;
+        const benDocType = payload?.ben_doc_type ? sanitize(payload.ben_doc_type, 10) : null;
+        const benDocNumber = payload?.ben_doc_number ? sanitize(payload.ben_doc_number, 20) : null;
 
         const comisionFija = profile.tarifa_enviar ?? 1190;
         const comisionVariable = Math.round(amount * (profile.tarifa_variable ?? 0.0012));
@@ -195,6 +198,9 @@ serve(async (req) => {
           amount,
           concept,
           status: bepayResult.success ? "PENDING" : "FAILED",
+          ben_name: benName,
+          ben_doc_type: benDocType,
+          ben_doc_number: benDocNumber,
           account_type: "Bre-B",
           account_key: key,
           bank_name: bankName,
@@ -312,6 +318,46 @@ serve(async (req) => {
             .eq("bepay_ide", payoutId);
         }
         result = statusResult;
+        break;
+      }
+
+      // ── Sincronizar dispersiones pendientes con el estado real de Bepay ──
+      case "sync_pending_payouts": {
+        if (profile.role !== "admin") throw new Error("No autorizado");
+
+        const { data: pending } = await adminClient
+          .from("bepay_transactions")
+          .select("id, bepay_ide")
+          .eq("type", "payout")
+          .eq("status", "PENDING")
+          .limit(50);
+
+        let updated = 0;
+        let checked = 0;
+
+        for (const tx of pending ?? []) {
+          if (!tx.bepay_ide) continue;
+          checked++;
+
+          try {
+            const res = await fetch(
+              BEPAY_BASE + "/payout/status/" + tx.bepay_ide + "/" + accountId,
+              { headers: { "Authorization": "Bearer " + token, "Accept": "application/json" } }
+            );
+            const statusJson = await res.json();
+
+            if (statusJson.data && statusJson.data.status && statusJson.data.status !== "PENDING") {
+              await adminClient.from("bepay_transactions")
+                .update({ status: statusJson.data.status, updated_at: new Date().toISOString() })
+                .eq("id", tx.id);
+              updated++;
+            }
+          } catch {
+            // Continúa con la siguiente aunque una falle
+          }
+        }
+
+        result = { success: true, checked, updated };
         break;
       }
 

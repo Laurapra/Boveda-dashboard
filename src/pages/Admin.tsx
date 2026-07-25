@@ -4,7 +4,7 @@ import { supabase } from "../lib/supabase";
 import { useAdmin } from "../hooks/useAdmin";
 import { Modal } from "../components/ui/Modal";
 import { Input } from "../components/ui/Input";
-import { getBepayBalance } from "../lib/bepayClient";
+import { getBepayBalance, syncPendingCharges, syncPendingPayouts } from "../lib/bepayClient";
 import type { ToastType, CreateUserInput } from "../types";
 
 interface Props {
@@ -240,6 +240,7 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [balanceError, setBalanceError] = useState<string | null>(null);
   const [userSummaries, setUserSummaries] = useState<UserSummaryRow[]>([]);
+  const [syncing, setSyncing] = useState(false);
 
   // Formulario crear usuario
   const [form, setForm] = useState<CreateUserInput>({ email: "", password: "", full_name: "", role: "operator", tarifa_recibir: 1190, tarifa_enviar: 1190, tarifa_variable: 0.0012 });
@@ -298,6 +299,22 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
       setBalanceLoading(false);
     }
   }, []);
+
+  // ── Sincronizar transacciones pendientes con el estado real de Bepay ──
+  const handleSyncPending = async () => {
+    setSyncing(true);
+    try {
+      const [chargesRes, payoutsRes] = await Promise.all([syncPendingCharges(), syncPendingPayouts()]);
+      const totalUpdated = (chargesRes?.updated ?? 0) + (payoutsRes?.updated ?? 0);
+      const totalChecked = (chargesRes?.checked ?? 0) + (payoutsRes?.checked ?? 0);
+      onToast("ok", "Sincronización completa", totalUpdated + " de " + totalChecked + " transacción(es) actualizadas");
+      await loadBalances();
+    } catch (err) {
+      onToast("error", "Error al sincronizar", getErrorMessage(err));
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   useEffect(() => {
     if (tab !== "saldos") return;
@@ -655,9 +672,19 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
 
             {/* Total acumulado — suma de comisiones de TODOS los usuarios */}
             <div style={{ background: "var(--surface)", border: "1px solid var(--success)", borderRadius: "var(--radius)", padding: "20px", boxShadow: "var(--shadow)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
-                <i className="ti ti-cash" style={{ color: "var(--success)", fontSize: "16px" }} />
-                <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--t3)", textTransform: "uppercase", letterSpacing: ".5px" }}>Total acumulado · Comisiones</span>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", marginBottom: "8px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <i className="ti ti-cash" style={{ color: "var(--success)", fontSize: "16px" }} />
+                  <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--t3)", textTransform: "uppercase", letterSpacing: ".5px" }}>Total acumulado · Comisiones</span>
+                </div>
+                <button
+                  onClick={handleSyncPending}
+                  disabled={syncing}
+                  style={{ padding: "5px 10px", border: "1px solid var(--accent)", borderRadius: "var(--radius-sm)", background: "var(--accent-dim)", color: "var(--accent)", fontSize: "11px", fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "5px", opacity: syncing ? 0.6 : 1, whiteSpace: "nowrap" }}
+                >
+                  <i className="ti ti-refresh-dot" />
+                  {syncing ? "Sincronizando…" : "Sincronizar pendientes"}
+                </button>
               </div>
               {balanceLoading ? (
                 <div style={{ fontSize: "13px", color: "var(--t3)" }}>Consultando…</div>

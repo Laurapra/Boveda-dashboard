@@ -77,9 +77,24 @@ export async function lookupBrebKey(key: string) {
 }
 
 export async function sendPayoutBreb(
-  key: string, amount: number, concept: string, reference: string, bankName?: string,
+  key: string,
+  amount: number,
+  concept: string,
+  reference: string,
+  options?: {
+    bankName?: string;
+    benName?: string;
+    benDocType?: string;
+    benDocNumber?: string;
+  }
 ) {
-  return callBepay("bepay-payouts", "payout_breb", { key, amount, concept, reference, bank_name:bankName });
+  return callBepay("bepay-payouts", "payout_breb", {
+    key, amount, concept, reference,
+    bank_name: options?.bankName,
+    ben_name: options?.benName,
+    ben_doc_type: options?.benDocType,
+    ben_doc_number: options?.benDocNumber,
+  });
 }
 
 export async function sendPayoutAch(payload: {
@@ -167,4 +182,11 @@ export async function getPseBanks() {
 
 export async function getCiiuCodes(perPage = 100) {
   return callBepay("bepay-charges", "get_ciiu_codes", { per_page: perPage });
+}
+export async function syncPendingCharges() {
+  return callBepay("bepay-charges", "sync_pending_charges", {});
+}
+
+export async function syncPendingPayouts() {
+  return callBepay("bepay-payouts", "sync_pending_payouts", {});
 }

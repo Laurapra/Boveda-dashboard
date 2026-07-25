@@ -482,6 +482,7 @@ serve(async (req) => {
         result = { success: true, data: geoData, from_cache: false };
         break;
       }
+
       // ── Tipos de documento (con caché) ────────────────────────────
       case "get_document_types": {
         const { data: cached } = await adminClient
@@ -601,6 +602,61 @@ serve(async (req) => {
         });
 
         result = { success: true, data: json.data, from_cache: false };
+        break;
+      }
+
+      // ── Sincronizar cobros pendientes con el estado real de Bepay ──
+      case "sync_pending_charges": {
+        if (profile.role !== "admin") throw new Error("No autorizado");
+
+        const { data: pending } = await adminClient
+          .from("bepay_transactions")
+          .select("id, bepay_ide")
+          .eq("type", "charge")
+          .eq("status", "PENDING")
+          .limit(50);
+
+        let updated = 0;
+        let checked = 0;
+
+        for (const tx of pending ?? []) {
+          if (!tx.bepay_ide) continue;
+          checked++;
+
+          try {
+            const res = await fetch(
+              `${BEPAY_BASE}/checkout/transactionStatus?ide=${tx.bepay_ide}&account_id=${accountId}`,
+              { headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" } }
+            );
+            const statusJson = await res.json();
+
+            if (statusJson.data?.status && statusJson.data.status !== "PENDING") {
+              await adminClient.from("bepay_transactions")
+                .update({ status: statusJson.data.status, raw_response: statusJson.data, updated_at: new Date().toISOString() })
+                .eq("id", tx.id);
+
+              if (statusJson.data.status === "APPROVED") {
+                const { data: txFull } = await adminClient
+                  .from("bepay_transactions")
+                  .select("account_key, amount, user_id")
+                  .eq("id", tx.id)
+                  .single();
+                if (txFull?.account_key) {
+                  await adminClient.rpc("increment_key_total", {
+                    p_key_value: txFull.account_key,
+                    p_user_id:   txFull.user_id,
+                    p_amount:    txFull.amount,
+                  });
+                }
+              }
+              updated++;
+            }
+          } catch {
+            // Continúa con la siguiente aunque una falle
+          }
+        }
+
+        result = { success: true, checked, updated };
         break;
       }
 

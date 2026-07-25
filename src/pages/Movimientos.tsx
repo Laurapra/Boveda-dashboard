@@ -345,8 +345,13 @@ export const MovimientosView: React.FC<Props> = ({ fmt, onToast }) => {
       const concept = "Dispersión a " + selectedBen.full_name;
 
       if (selectedCta.account_type === "Bre-B") {
-        res = await sendPayoutBreb(selectedCta.account_key, rawMonto, concept, reference, lookup?.bank ?? undefined);
-      } else {
+  res = await sendPayoutBreb(selectedCta.account_key, rawMonto, concept, reference, {
+    bankName: lookup?.bank ?? undefined,
+    benName: selectedBen.full_name,
+    benDocType: selectedBen.doc_type,
+    benDocNumber: selectedBen.doc_number,
+  });
+} else {
         const bankMatch = findBankCode(bankCodes, selectedCta.bank_name);
         const bankCode = bankMatch ? bankMatch.code : "";
 
@@ -752,18 +757,25 @@ export const MovimientosView: React.FC<Props> = ({ fmt, onToast }) => {
               )}
 
               {selectedCta ? (
-                <div style={{ marginTop: "8px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                  {[
-                    ["Tipo", selectedCta.account_type],
-                    ["Banco", selectedCta.bank_name || "sin definir"],
-                    ["Llave/Número", selectedCta.account_key],
-                  ].map((row) => (
-                    <div key={row[0]} style={{ padding: "5px 10px", background: "var(--elevated)", border: "1px solid var(--border)", borderRadius: "20px", fontSize: "12px" }}>
-                      <span style={{ color: "var(--t3)" }}>{row[0]}:</span> <span style={{ fontWeight: 500, fontFamily: row[0] === "Llave/Número" ? "var(--mono)" : undefined }}>{row[1]}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
+  <div style={{ marginTop: "8px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+    {(
+      selectedCta.account_type === "Bre-B"
+        ? [
+            ["Tipo", selectedCta.account_type],
+            ["Llave", selectedCta.account_key],
+          ]
+        : [
+            ["Tipo", selectedCta.account_type],
+            ["Banco", selectedCta.bank_name || "sin definir"],
+            ["Número", selectedCta.account_key],
+          ]
+    ).map((row) => (
+      <div key={row[0]} style={{ padding: "5px 10px", background: "var(--elevated)", border: "1px solid var(--border)", borderRadius: "20px", fontSize: "12px" }}>
+        <span style={{ color: "var(--t3)" }}>{row[0]}:</span> <span style={{ fontWeight: 500, fontFamily: row[0] === "Llave" || row[0] === "Número" ? "var(--mono)" : undefined }}>{row[1]}</span>
+      </div>
+    ))}
+  </div>
+) : null}
 
               {selectedCta && selectedCta.account_type === "Bre-B" ? (
                 <div style={{ marginTop: "10px" }}>
