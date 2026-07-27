@@ -134,7 +134,7 @@ export const EstadoCuentaView: React.FC<Props> = ({ fmt, onToast }) => {
       // ── Tabla ──
       autoTable(doc, {
         startY: 70,
-        head: [["Fecha", "Tipo", "Concepto / Beneficiario", "Monto", "Comisión", "Estado"]],
+        head: [["Fecha", "Tipo", "Concepto", "Monto", "Comisión", "Estado"]],
         body: txns.map(t => [
           new Date(t.created_at).toLocaleDateString("es-CO", { day:"2-digit", month:"short", year:"numeric" }),
           t.type === "charge" ? "Cobro" : "Dispersión",

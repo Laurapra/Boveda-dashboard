@@ -215,11 +215,15 @@ interface UserSummaryRow {
   user_id: string;
   full_name: string;
   email: string;
-  total_recibido: number;
-  total_comisiones: number;
-  tarifa_recibir: number;
-  tarifa_enviar: number;
-  tarifa_variable: number;
+  total_recaudado: number;
+  total_dispersado: number;
+  tickets_recaudo: number;
+  tickets_dispersion: number;
+  tarifa_recaudo: number;
+  tarifa_dispersion: number;
+  variable_pct: number;
+  costos: number;
+  ganancia: number;
 }
 
 type TabKey = "usuarios" | "onboardings" | "saldos";
@@ -274,7 +278,7 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
     };
   }, [tab, loadOnboardings]);
 
-  // ── Cargar saldos (real Bepay + resumen por usuario) ────────────
+  // ── Cargar saldos (real Bepay + resumen de rentabilidad por usuario) ──
   const loadBalances = useCallback(async () => {
     setBalanceLoading(true);
     setBalanceError(null);
@@ -402,7 +406,12 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
     bg: s === "approved" ? "var(--success-dim)" : s === "pending" ? "var(--warning-dim)" : s === "in_review" ? "var(--accent-dim)" : "var(--error-dim)",
   });
 
-  const totalComisiones = userSummaries.reduce((sum, u) => sum + u.total_comisiones, 0);
+  const totalGanancia = userSummaries.reduce((sum, u) => sum + u.ganancia, 0);
+  const totalCostos = userSummaries.reduce((sum, u) => sum + u.costos, 0);
+  const totalRecaudado = userSummaries.reduce((sum, u) => sum + u.total_recaudado, 0);
+  const totalDispersado = userSummaries.reduce((sum, u) => sum + u.total_dispersado, 0);
+  const totalTicketsRecaudo = userSummaries.reduce((sum, u) => sum + u.tickets_recaudo, 0);
+  const totalTicketsDispersion = userSummaries.reduce((sum, u) => sum + u.tickets_dispersion, 0);
 
   return (
     <div style={{ animation: "fadeUp .3s ease" }}>
@@ -670,12 +679,12 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
               <div style={{ fontSize: "11px", color: "var(--t3)", marginTop: "6px" }}>Disponible en la cuenta principal (437)</div>
             </div>
 
-            {/* Total acumulado — suma de comisiones de TODOS los usuarios */}
+            {/* Ganancia neta — (Total Recaudado + Total Dispersado) × Variable% */}
             <div style={{ background: "var(--surface)", border: "1px solid var(--success)", borderRadius: "var(--radius)", padding: "20px", boxShadow: "var(--shadow)" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", marginBottom: "8px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                   <i className="ti ti-cash" style={{ color: "var(--success)", fontSize: "16px" }} />
-                  <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--t3)", textTransform: "uppercase", letterSpacing: ".5px" }}>Total acumulado · Comisiones</span>
+                  <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--t3)", textTransform: "uppercase", letterSpacing: ".5px" }}>Ganancia neta acumulada</span>
                 </div>
                 <button
                   onClick={handleSyncPending}
@@ -689,15 +698,15 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
               {balanceLoading ? (
                 <div style={{ fontSize: "13px", color: "var(--t3)" }}>Consultando…</div>
               ) : (
-                <div style={{ fontSize: "30px", fontWeight: 700, color: "var(--success)" }}>{fmtCOP(totalComisiones)}</div>
+                <div style={{ fontSize: "30px", fontWeight: 700, color: "var(--success)" }}>{fmtCOP(totalGanancia)}</div>
               )}
-              <div style={{ fontSize: "11px", color: "var(--t3)", marginTop: "6px" }}>Suma de comisiones de {userSummaries.length} usuario(s)</div>
+              <div style={{ fontSize: "11px", color: "var(--t3)", marginTop: "6px" }}>Costos operativos: {fmtCOP(totalCostos)}</div>
             </div>
           </div>
 
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", overflow: "hidden", boxShadow: "var(--shadow)" }}>
             <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: "14px", fontWeight: 600, color: "var(--t1)" }}>Resumen por usuario</span>
+              <span style={{ fontSize: "14px", fontWeight: 600, color: "var(--t1)" }}>Rentabilidad por usuario</span>
               <button onClick={loadBalances} style={{ padding: "6px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--surface)", color: "var(--t2)", fontSize: "12px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "5px" }}>
                 <i className="ti ti-refresh" /> Actualizar
               </button>
@@ -719,14 +728,8 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr>
-                      {["Usuario", "Email", "Total recibido", "Comisiones", "Tarifa recibir", "Tarifa enviar", "Variable"].map((h) => (
-                        <th
-                          key={h}
-                          style={{
-                            ...thStyle,
-                            textAlign: ["Total recibido", "Comisiones", "Tarifa recibir", "Tarifa enviar", "Variable"].includes(h) ? "right" : "left",
-                          }}
-                        >
+                      {["Usuario", "Total Recaudado", "Total Dispersado", "Tiquetes Recaudo", "Tiquetes Dispersión", "Tarifa Recaudo", "Tarifa Dispersión", "Variable", "Costos", "Ganancia"].map((h) => (
+                        <th key={h} style={{ ...thStyle, textAlign: h === "Usuario" ? "left" : "right" }}>
                           {h}
                         </th>
                       ))}
@@ -735,16 +738,36 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
                   <tbody>
                     {userSummaries.map((u) => (
                       <tr key={u.user_id} onMouseEnter={(e) => (e.currentTarget.style.background = "var(--elevated)")} onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
-                        <td style={{ ...tdStyle, fontWeight: 600, color: "var(--t1)" }}>{u.full_name}</td>
-                        <td style={{ ...tdStyle, fontSize: "12px", color: "var(--t3)" }}>{u.email}</td>
-                        <td style={{ ...tdStyle, textAlign: "right", fontWeight: 600, color: "var(--t1)", fontVariantNumeric: "tabular-nums" }}>{fmtCOP(u.total_recibido)}</td>
-                        <td style={{ ...tdStyle, textAlign: "right", fontWeight: 600, color: "var(--success)", fontVariantNumeric: "tabular-nums" }}>{fmtCOP(u.total_comisiones)}</td>
-                        <td style={{ ...tdStyle, textAlign: "right", fontSize: "12px", color: "var(--t3)", fontVariantNumeric: "tabular-nums" }}>{fmtCOP(u.tarifa_recibir)}</td>
-                        <td style={{ ...tdStyle, textAlign: "right", fontSize: "12px", color: "var(--t3)", fontVariantNumeric: "tabular-nums" }}>{fmtCOP(u.tarifa_enviar)}</td>
-                        <td style={{ ...tdStyle, textAlign: "right", fontSize: "12px", color: "var(--t3)" }}>{(u.tarifa_variable * 100).toFixed(2)}%</td>
+                        <td style={{ ...tdStyle, fontWeight: 600, color: "var(--t1)" }}>
+                          {u.full_name}
+                          <div style={{ fontSize: "11px", color: "var(--t3)", fontWeight: 400 }}>{u.email}</div>
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{fmtCOP(u.total_recaudado)}</td>
+                        <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{fmtCOP(u.total_dispersado)}</td>
+                        <td style={{ ...tdStyle, textAlign: "right" }}>{u.tickets_recaudo}</td>
+                        <td style={{ ...tdStyle, textAlign: "right" }}>{u.tickets_dispersion}</td>
+                        <td style={{ ...tdStyle, textAlign: "right", fontSize: "12px", color: "var(--t3)" }}>{fmtCOP(u.tarifa_recaudo)}</td>
+                        <td style={{ ...tdStyle, textAlign: "right", fontSize: "12px", color: "var(--t3)" }}>{fmtCOP(u.tarifa_dispersion)}</td>
+                        <td style={{ ...tdStyle, textAlign: "right", fontSize: "12px", color: "var(--t3)" }}>{(u.variable_pct * 100).toFixed(2)}%</td>
+                        <td style={{ ...tdStyle, textAlign: "right", fontWeight: 600, color: "var(--error)", fontVariantNumeric: "tabular-nums" }}>{fmtCOP(u.costos)}</td>
+                        <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: "var(--success)", fontVariantNumeric: "tabular-nums" }}>{fmtCOP(u.ganancia)}</td>
                       </tr>
                     ))}
                   </tbody>
+                  <tfoot>
+                    <tr style={{ background: "var(--elevated)" }}>
+                      <td style={{ ...tdStyle, fontWeight: 700, color: "var(--t1)" }}>TOTAL</td>
+                      <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700 }}>{fmtCOP(totalRecaudado)}</td>
+                      <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700 }}>{fmtCOP(totalDispersado)}</td>
+                      <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700 }}>{totalTicketsRecaudo}</td>
+                      <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700 }}>{totalTicketsDispersion}</td>
+                      <td style={tdStyle}></td>
+                      <td style={tdStyle}></td>
+                      <td style={tdStyle}></td>
+                      <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: "var(--error)" }}>{fmtCOP(totalCostos)}</td>
+                      <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: "var(--success)" }}>{fmtCOP(totalGanancia)}</td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             )}

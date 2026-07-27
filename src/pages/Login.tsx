@@ -2,12 +2,9 @@
 import React, { useState } from "react";
 import { useAuthStore } from "../store/authStore";
 import { Input } from "../components/ui/Input";
+import Logo from "../assets/Logo.png";
 
-interface Props {
-  onGoRegister: () => void; // callback para cambiar a la pantalla de registro
-}
-
-export const Login: React.FC<Props> = ({ onGoRegister }) => {
+export const Login: React.FC = () => {
   const { signIn } = useAuthStore();
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
@@ -38,17 +35,8 @@ export const Login: React.FC<Props> = ({ onGoRegister }) => {
       <div style={{ width: "100%", maxWidth: "400px", animation: "fadeUp .4s ease" }}>
 
         {/* Logo */}
-        <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "40px", justifyContent: "center" }}>
-          <div style={{ width: "42px", height: "42px", borderRadius: "12px", background: "linear-gradient(140deg, var(--accent), #7c5cff)", display: "grid", placeItems: "center", boxShadow: "0 8px 24px -8px var(--accent-ring)" }}>
-            <svg viewBox="0 0 24 24" fill="none" width="22" height="22">
-              <path d="M12 2L3 6.5v6c0 5 3.9 8.4 9 9.5 5.1-1.1 9-4.5 9-9.5v-6L12 2z" fill="#fff" opacity=".95" />
-              <path d="M9 12l2 2 4-4" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </div>
-          <div>
-            <div style={{ fontWeight: 800, fontSize: "22px", letterSpacing: "-.4px" }}>Bóveda</div>
-            <div style={{ fontSize: "11px", color: "var(--t3)", fontWeight: 600, letterSpacing: ".4px", textTransform: "uppercase" }}>Payment Gateway</div>
-          </div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "40px" }}>
+          <img src={Logo} alt="Logo" style={{ height: "64px", width: "auto", objectFit: "contain" }} />
         </div>
 
         {/* Tarjeta del formulario */}
@@ -87,13 +75,6 @@ export const Login: React.FC<Props> = ({ onGoRegister }) => {
             </button>
           </form>
         </div>
-
-        <p style={{ textAlign: "center", marginTop: "20px", color: "var(--t3)", fontSize: "13px" }}>
-          ¿No tienes cuenta?{" "}
-          <button onClick={onGoRegister} style={{ color: "var(--accent)", fontWeight: 600, background: "none", border: "none", cursor: "pointer" }}>
-            Regístrate
-          </button>
-        </p>
       </div>
     </div>
   );

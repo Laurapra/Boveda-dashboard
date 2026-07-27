@@ -4,7 +4,6 @@ import "./index.css";
 
 import { useAuthStore } from "./store/authStore";
 import { Login }    from "./pages/Login";
-import { Register } from "./pages/Register";
 import { ToastContainer } from "./components/ui/Toast";
 import { useToast } from "./hooks/useToast";
 
@@ -26,7 +25,7 @@ import { AdminView }         from "./pages/Admin";
 // Modal de creación de links/QR
 import { CreateLinkModal } from "./components/CreateLinkModal";
 
-type AuthScreen = "login" | "register";
+
 
 const COP = new Intl.NumberFormat("es-CO", {
   style: "currency", currency: "COP", maximumFractionDigits: 0,
@@ -46,7 +45,6 @@ const PAGE_INFO: Record<ViewKey, { title: string; sub: string }> = {
 
 export default function App() {
   const { user, session, loading, loadSession } = useAuthStore();
-  const [authScreen, setAuthScreen] = useState<AuthScreen>("login");
   const [view, setView]             = useState<ViewKey>("home");
   const [theme, setTheme]           = useState<"dark" | "light">("dark");
   const { toasts, addToast, removeToast } = useToast();
@@ -80,11 +78,7 @@ export default function App() {
   if (!session || !user) {
     return (
       <>
-        {authScreen === "login"
-          ? <Login    onGoRegister={() => setAuthScreen("register")} />
-          : <Register onGoLogin={()    => setAuthScreen("login")} />
-        }
-        <ToastContainer toasts={toasts} onRemove={removeToast} />
+        <Login/>
       </>
     );
   }
