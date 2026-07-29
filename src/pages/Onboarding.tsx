@@ -437,6 +437,7 @@ useEffect(() => {
 
       const id = `OB-${new Date().getFullYear()}-${String(Math.floor(Math.random()*99999)).padStart(5,"0")}`;
       setSolId(res?.id?.slice(0,8).toUpperCase() ?? id);
+      setExistingStatus("pending");
       onToast("ok", "Solicitud enviada", "El equipo de Ramplix revisará tu información");
       setStage("success");
     } catch (err: any) {
@@ -787,20 +788,25 @@ useEffect(() => {
   }
 
   if (stage === "success") {
+    const isApproved = existingStatus === "approved";
     return (
       <div style={{ animation:"fadeUp .3s ease", maxWidth:"480px", margin:"0 auto", textAlign:"center", padding:"36px 16px" }}>
         <div style={{ width:"60px", height:"60px", borderRadius:"50%", background:"var(--success-dim)", color:"var(--success)", display:"grid", placeItems:"center", margin:"0 auto 18px", fontSize:"28px" }}>
           <i className="ti ti-circle-check" />
         </div>
-        <h2 style={{ fontSize:"20px", fontWeight:700, marginBottom:"8px", color:"var(--t1)" }}>Solicitud enviada</h2>
+        <h2 style={{ fontSize:"20px", fontWeight:700, marginBottom:"8px", color:"var(--t1)" }}>{isApproved ? "Cuenta aprobada" : "Solicitud enviada"}</h2>
         <p style={{ color:"var(--t2)", fontSize:"13.5px", lineHeight:1.7, marginBottom:"22px", maxWidth:"360px", margin:"0 auto 22px" }}>
-          Tu información fue recibida. El equipo de Ramplix revisará tu solicitud en <strong>1 a 3 días hábiles</strong>.
+          {isApproved
+            ? "Tu solicitud fue aprobada — ya puedes crear tu billetera y empezar a operar."
+            : <>Tu información fue recibida. El equipo de Ramplix revisará tu solicitud en <strong>1 a 3 días hábiles</strong>.</>}
         </p>
         <div style={{ background:"var(--elevated)", border:"1px solid var(--border)", borderRadius:"var(--radius)", padding:"16px", maxWidth:"300px", margin:"0 auto 22px" }}>
           {[
-            ["Estado",    <span style={{ display:"inline-flex", alignItems:"center", gap:"5px", padding:"2px 8px", borderRadius:"20px", fontSize:"11px", fontWeight:600, color:"var(--warning)", background:"var(--warning-dim)" }}>⏳ En revisión</span>],
+            ["Estado",    isApproved
+              ? <span style={{ display:"inline-flex", alignItems:"center", gap:"5px", padding:"2px 8px", borderRadius:"20px", fontSize:"11px", fontWeight:600, color:"var(--success)", background:"var(--success-dim)" }}>✓ Aprobado</span>
+              : <span style={{ display:"inline-flex", alignItems:"center", gap:"5px", padding:"2px 8px", borderRadius:"20px", fontSize:"11px", fontWeight:600, color:"var(--warning)", background:"var(--warning-dim)" }}>⏳ En revisión</span>],
             ["Solicitud", <code style={{ fontFamily:"var(--mono)", fontSize:"12px", color:"var(--t1)" }}>{solId}</code>],
-            ["Siguiente", "Revisión por el equipo Ramplix"],
+            ["Siguiente", isApproved ? "Crea tu billetera desde el menú" : "Revisión por el equipo Ramplix"],
           ].map(([k, v], i, arr) => (
             <div key={String(k)} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom: i < arr.length-1 ? "1px solid var(--border)" : "none", fontSize:"12.5px" }}>
               <span style={{ color:"var(--t3)" }}>{k}</span>
