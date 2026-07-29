@@ -285,7 +285,7 @@ serve(async (req) => {
         break;
       }
 
-      // ── Crear llave VIRTUAL (no llama a Bepay) ────────────────────
+      // ── Crear llave Bre-B (registrada de verdad en Bepay) ─────────
       case "create_virtual_key": {
         if (profile.role !== "admin") {
           const { approved, status } = await checkOnboardingApproved(adminClient, user.id);
@@ -305,15 +305,38 @@ serve(async (req) => {
           const consecutivo = (count ?? 0) + 1 + attempt;
           const virtualKey  = `rmpx${userPart}${String(consecutivo).padStart(2, "0")}`;
 
+          // ── Registrar la llave REAL en Bepay antes de guardarla localmente ──
+          // Antes esto solo se guardaba en nuestra tabla con un valor de relleno
+          // ("@BETEST"), por lo que Bepay nunca supo que la llave existía —
+          // de ahí el "esa llave generada no se encuentra registrada".
+          const bepayRes = await fetch(`${BEPAY_BASE}/bre-b/key/register`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json", "Accept": "application/json" },
+            body: JSON.stringify({
+              account_id: accountId,
+              reference:  reference ?? virtualKey,
+              key_value:  virtualKey,
+            }),
+          });
+          const bepayJson = await bepayRes.json();
+
+          if (!bepayJson.success) {
+            // Si Bepay rechaza esta llave (ej. ya existe), probamos el siguiente consecutivo
+            lastError = new Error(
+              typeof bepayJson.message === "string" ? bepayJson.message : JSON.stringify(bepayJson.message ?? bepayJson)
+            );
+            continue;
+          }
+
           const { data, error } = await adminClient.from("breb_keys").insert({
             user_id:          user.id,
             key_value:        virtualKey,
             reference,
             consecutivo,
             status:           "ACTIVE",
-            is_virtual:       true,
-            real_account_key: "@BETEST",
-            bepay_response:   { note: "Llave virtual interna" },
+            is_virtual:       false,
+            real_account_key: bepayJson.data?.key_value ?? virtualKey,
+            bepay_response:   bepayJson.data ?? bepayJson,
           }).select().single();
 
           if (!error) {
@@ -322,7 +345,7 @@ serve(async (req) => {
               action:    "CREATE_VIRTUAL_KEY",
               entity:    "breb_keys",
               entity_id: data.id,
-              metadata:  { key_value: virtualKey, consecutivo },
+              metadata:  { key_value: virtualKey, consecutivo, bepay_registered: true },
             });
             result = { success: true, data };
             break;
