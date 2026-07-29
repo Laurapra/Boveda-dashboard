@@ -4,6 +4,7 @@ import "./index.css";
 
 import { useAuthStore } from "./store/authStore";
 import { Login }    from "./pages/Login";
+import { ResetPassword } from "./pages/ResetPassword";
 import { ToastContainer } from "./components/ui/Toast";
 import { useToast } from "./hooks/useToast";
 
@@ -44,7 +45,7 @@ const PAGE_INFO: Record<ViewKey, { title: string; sub: string }> = {
 };
 
 export default function App() {
-  const { user, session, loading, loadSession } = useAuthStore();
+  const { user, session, loading, loadSession, signOut } = useAuthStore();
   const [view, setView]             = useState<ViewKey>("home");
   const [theme, setTheme]           = useState<"dark" | "light">("dark");
   const { toasts, addToast, removeToast } = useToast();
@@ -58,6 +59,21 @@ export default function App() {
 
   const toggleTheme = () => setTheme((t) => t === "dark" ? "light" : "dark");
   const fmt = COP.format.bind(COP);
+
+  // ── Recuperación de contraseña ──
+  // Supabase redirige aquí con una sesión temporal tras el clic en el enlace del correo.
+  // Se revisa antes que cualquier otra lógica de sesión (no usamos react-router).
+  if (window.location.pathname === "/reset-password") {
+    return (
+      <ResetPassword
+        onDone={async () => {
+          // Cierra la sesión temporal de recuperación y vuelve al login normal
+          await signOut();
+          window.location.href = "/";
+        }}
+      />
+    );
+  }
 
   // ── Cargando sesión ──
   if (loading) {

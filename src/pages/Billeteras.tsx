@@ -34,6 +34,7 @@ interface WalletMovement {
   ben_name: string | null;
   bank_name: string | null;
   account_type: string | null;
+  payment_method: string | null;
   comision_total: number | null;
   created_at: string;
 }
@@ -69,6 +70,26 @@ function statusLabel(s: string): string {
   if (s === "APPROVED" || s === "COMPLETED") return "Completado";
   if (s === "PENDING") return "Pendiente";
   return "Rechazado";
+}
+
+// El bepay_ide de una dispersión cae en la referencia interna ("DISP-"/"ACH-")
+// cuando Bepay no devolvió un ID real en su respuesta — en ese caso no lo mostramos.
+function realBepayIde(m: WalletMovement): string | null {
+  if (!m.bepay_ide) return null;
+  if (m.bepay_ide.startsWith("DISP-") || m.bepay_ide.startsWith("ACH-")) return null;
+  return m.bepay_ide;
+}
+
+// Concepto automático según la acción — ej: "Dispersión Breb", "Recaudo Pse"
+function conceptLabel(m: WalletMovement): string {
+  if (m.type === "payout") {
+    return m.account_type === "Bre-B" ? "Dispersión Breb" : "Dispersión Ach";
+  }
+  if (m.payment_method) {
+    const method = m.payment_method.toLowerCase();
+    return "Recaudo " + method.charAt(0).toUpperCase() + method.slice(1);
+  }
+  return "Recaudo";
 }
 
 export const BilleterasView: React.FC<Props> = ({ fmt, onToast }) => {
@@ -135,14 +156,14 @@ export const BilleterasView: React.FC<Props> = ({ fmt, onToast }) => {
       const [chargesRes, payoutsRes] = await Promise.all([
         supabase
           .from("bepay_transactions")
-          .select("id, bepay_ide, type, amount, concept, status, ben_name, bank_name, account_type, comision_total, created_at")
+          .select("id, bepay_ide, type, amount, concept, status, ben_name, bank_name, account_type, payment_method, comision_total, created_at")
           .eq("account_key", wallet.key_value)
           .eq("type", "charge")
           .order("created_at", { ascending: false })
           .limit(100),
         supabase
           .from("bepay_transactions")
-          .select("id, bepay_ide, type, amount, concept, status, ben_name, bank_name, account_type, comision_total, created_at")
+          .select("id, bepay_ide, type, amount, concept, status, ben_name, bank_name, account_type, payment_method, comision_total, created_at")
           .eq("user_id", user.id)
           .eq("type", "payout")
           .order("created_at", { ascending: false })
@@ -418,7 +439,7 @@ export const BilleterasView: React.FC<Props> = ({ fmt, onToast }) => {
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
-                {["Fecha", "Tipo", "Beneficiario / Concepto", "Banco", "Monto", "Comisión", "Estado"].map((h) => (
+                {["Fecha", "IDE", "Tipo", "Concepto", "Banco", "Monto", "Comisión", "Estado"].map((h) => (
                   <th key={h} style={{ ...thStyle, textAlign: h === "Monto" || h === "Comisión" ? "right" : "left" }}>
                     {h}
                   </th>
@@ -428,22 +449,22 @@ export const BilleterasView: React.FC<Props> = ({ fmt, onToast }) => {
             <tbody>
               {movementsLoading ? (
                 <tr>
-                  <td colSpan={7} style={{ padding: "40px", textAlign: "center", color: "var(--t3)" }}>
+                  <td colSpan={8} style={{ padding: "40px", textAlign: "center", color: "var(--t3)" }}>
                     Cargando…
                   </td>
                 </tr>
               ) : filteredMovements.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ padding: "40px", textAlign: "center", color: "var(--t3)" }}>
+                  <td colSpan={8} style={{ padding: "40px", textAlign: "center", color: "var(--t3)" }}>
                     Sin movimientos registrados todavía
                   </td>
                 </tr>
               ) : (
                 filteredMovements.map((m) => (
                   <tr key={m.id} onMouseEnter={(e) => (e.currentTarget.style.background = "var(--elevated)")} onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
-                    <td style={tdStyle}>
-                      <div style={{ fontFamily: "var(--mono)", fontSize: "11px", fontWeight: 500, color: "var(--t2)" }}>{m.bepay_ide ?? m.id.slice(0, 12)}</div>
-                      <div style={{ fontSize: "10px", color: "var(--t3)", marginTop: "2px" }}>{formatDateTime(m.created_at)}</div>
+                    <td style={{ ...tdStyle, fontSize: "12px", color: "var(--t2)" }}>{formatDateTime(m.created_at)}</td>
+                    <td style={{ ...tdStyle, fontFamily: "var(--mono)", fontSize: "11px", color: "var(--t3)" }}>
+                      {realBepayIde(m) ?? "—"}
                     </td>
                     <td style={tdStyle}>
                       <span
@@ -460,10 +481,10 @@ export const BilleterasView: React.FC<Props> = ({ fmt, onToast }) => {
                         }}
                       >
                         <i className={"ti " + (m.type === "charge" ? "ti-arrow-down" : "ti-arrow-up")} style={{ fontSize: "12px" }} />
-                        {m.type === "charge" ? "Cobro" : "Dispersión"}
+                        {m.type === "charge" ? "Recaudo" : "Dispersión"}
                       </span>
                     </td>
-                    <td style={{ ...tdStyle, fontSize: "12.5px", color: "var(--t1)" }}>{m.ben_name ?? m.concept ?? "—"}</td>
+                    <td style={{ ...tdStyle, fontSize: "12.5px", color: "var(--t1)" }}>{conceptLabel(m)}</td>
                     <td style={{ ...tdStyle, fontSize: "12px", color: "var(--t2)" }}>{m.bank_name ?? "—"}</td>
                     <td style={{ ...tdStyle, textAlign: "right", fontWeight: 600, fontVariantNumeric: "tabular-nums", color: m.type === "charge" ? "var(--success)" : "var(--error)" }}>
                       {m.type === "charge" ? "+" : "-"}

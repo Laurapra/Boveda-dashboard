@@ -36,6 +36,19 @@ function sanitize(value: unknown, maxLen = 255): string {
   return clean;
 }
 
+// Bepay responde los endpoints de payout como batch: `data` puede venir como
+// array (uno por cada payout enviado) o como objeto único. Este helper extrae
+// el ID/IDE real que Bepay asignó, sin importar la forma de la respuesta.
+function extractPayoutId(data: unknown): string | null {
+  if (!data) return null;
+  const first = Array.isArray(data) ? data[0] : data;
+  if (!first || typeof first !== "object") return null;
+  const obj = first as Record<string, unknown>;
+  const raw = obj.ide ?? obj.id ?? obj.payout_id ?? obj.transaction_id;
+  if (raw === undefined || raw === null || raw === "") return null;
+  return String(raw);
+}
+
 async function checkOnboardingApproved(
   adminClient: ReturnType<typeof createClient>,
   userId: string
@@ -193,7 +206,7 @@ serve(async (req) => {
 
         const { data: txRow } = await adminClient.from("bepay_transactions").insert({
           user_id: user.id,
-          bepay_ide: (bepayResult.data && (bepayResult.data.ide || bepayResult.data.id)) || reference,
+          bepay_ide: extractPayoutId(bepayResult.data) ?? reference,
           type: "payout",
           amount,
           concept,
@@ -264,7 +277,7 @@ serve(async (req) => {
 
         await adminClient.from("bepay_transactions").insert({
           user_id: user.id,
-          bepay_ide: (bepayResult.data && String(bepayResult.data.id)) || reference,
+          bepay_ide: extractPayoutId(bepayResult.data) ?? reference,
           type: "payout",
           amount,
           concept,
