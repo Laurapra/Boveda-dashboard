@@ -67,17 +67,24 @@ serve(async (req) => {
     if (authErr) throw new Error(authErr.message);
     if (!newUser.user) throw new Error("No se pudo crear el usuario");
 
-    // Insertar el perfil con tarifas personalizadas
-    const { error: profileErr } = await adminClient.from("profiles").insert({
-      id: newUser.user.id,
-      email,
-      full_name,
-      role,
-      tarifa_recibir: tarifa_recibir ?? 1190,
-      tarifa_enviar: tarifa_enviar ?? 1190,
-      tarifa_variable: tarifa_variable ?? 0.0012,
-      is_active: true,
-    });
+    // Escribir el perfil con las tarifas personalizadas.
+    // Usamos upsert (no insert) porque un trigger en la base de datos ya crea
+    // automáticamente una fila básica en `profiles` apenas se inserta el usuario
+    // en auth.users — un insert directo aquí chocaría con esa fila y fallaría
+    // con "duplicate key value violates unique constraint profiles_pkey".
+    const { error: profileErr } = await adminClient.from("profiles").upsert(
+      {
+        id: newUser.user.id,
+        email,
+        full_name,
+        role,
+        tarifa_recibir: tarifa_recibir ?? 1190,
+        tarifa_enviar: tarifa_enviar ?? 1190,
+        tarifa_variable: tarifa_variable ?? 0.0012,
+        is_active: true,
+      },
+      { onConflict: "id" }
+    );
 
     if (profileErr) {
       // ── Rollback: si el perfil falla, borramos el usuario de Auth ──
