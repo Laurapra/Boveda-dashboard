@@ -295,15 +295,22 @@ serve(async (req) => {
         const reference = payload?.reference ? sanitize(payload.reference, 100) : null;
         const userPart  = user.id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toLowerCase();
 
+        // ── Base de la llave: RAMPLIX + últimos 4 dígitos de la cédula/NIT ──
+        // Se busca en el onboarding aprobado del usuario (persona natural o empresa).
+        const [pnDoc, empDoc] = await Promise.all([
+          adminClient.from("onboarding_pn").select("doc_number").eq("user_id", user.id).single(),
+          adminClient.from("onboarding_emp").select("nit").eq("user_id", user.id).single(),
+        ]);
+        const docNumber = pnDoc.data?.doc_number ?? empDoc.data?.nit ?? null;
+        const last4 = docNumber ? docNumber.replace(/\D/g, "").slice(-4) : null;
+        const keyBase = last4 && last4.length === 4 ? `RAMPLIX${last4}` : `RAMPLIX${userPart.slice(0, 4).toUpperCase()}`;
+
         let lastError: any = null;
         for (let attempt = 0; attempt < 5; attempt++) {
-          const { count } = await adminClient
-            .from("breb_keys")
-            .select("*", { count: "exact", head: true })
-            .eq("user_id", user.id);
-
-          const consecutivo = (count ?? 0) + 1 + attempt;
-          const virtualKey  = `rmpx${userPart}${String(consecutivo).padStart(2, "0")}`;
+          // Primer intento: RAMPLIX + 4 dígitos. Si Bepay la rechaza (choque con
+          // otro usuario que comparte esos mismos últimos 4 dígitos), se agrega
+          // un consecutivo para desempatar.
+          const virtualKey = attempt === 0 ? keyBase : `${keyBase}${attempt}`;
 
           // ── Registrar la llave REAL en Bepay antes de guardarla localmente ──
           // Antes esto solo se guardaba en nuestra tabla con un valor de relleno
@@ -332,7 +339,7 @@ serve(async (req) => {
             user_id:          user.id,
             key_value:        virtualKey,
             reference,
-            consecutivo,
+            consecutivo:      attempt + 1,
             status:           "ACTIVE",
             is_virtual:       false,
             real_account_key: bepayJson.data?.key_value ?? virtualKey,
@@ -345,7 +352,7 @@ serve(async (req) => {
               action:    "CREATE_VIRTUAL_KEY",
               entity:    "breb_keys",
               entity_id: data.id,
-              metadata:  { key_value: virtualKey, consecutivo, bepay_registered: true },
+              metadata:  { key_value: virtualKey, bepay_registered: true },
             });
             result = { success: true, data };
             break;
