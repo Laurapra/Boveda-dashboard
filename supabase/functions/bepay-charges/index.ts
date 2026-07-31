@@ -316,12 +316,17 @@ serve(async (req) => {
           // Antes esto solo se guardaba en nuestra tabla con un valor de relleno
           // ("@BETEST"), por lo que Bepay nunca supo que la llave existía —
           // de ahí el "esa llave generada no se encuentra registrada".
+          // IMPORTANTE: "reference" aquí debe ser la MISMA referencia usada al
+          // registrar al usuario Bre-b en el onboarding (RAMPLIX+últimos 4 de su
+          // cédula/NIT) — es como Bepay vincula esta llave con ese usuario ya
+          // registrado. La nota interna que la persona escribe en el modal
+          // ("Referencia opcional") NO se manda a Bepay, solo se guarda localmente.
           const bepayRes = await fetch(`${BEPAY_BASE}/bre-b/key/register`, {
             method: "POST",
             headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json", "Accept": "application/json" },
             body: JSON.stringify({
               account_id: accountId,
-              reference:  reference ?? virtualKey,
+              reference:  keyBase,
               key_value:  virtualKey,
             }),
           });

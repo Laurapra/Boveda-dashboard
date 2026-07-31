@@ -338,9 +338,9 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
   // `success:false` que la función puede devolver con status 200 — antes solo
   // se revisaba `error`, así que un rechazo de Bepay pasaba desapercibido y
   // el onboarding quedaba "aprobado" pero sin usuario Bre-b registrado.
-  const registerInBepay = async (id: string, type: string) => {
+  const registerInBepay = async (id: string, type: string, force = false) => {
     const { data, error: brebErr } = await supabase.functions.invoke("onboarding", {
-      body: { action: "register_in_bepay", payload: { onboarding_id: id, type } },
+      body: { action: "register_in_bepay", payload: { onboarding_id: id, type, force } },
     });
     if (brebErr) {
       onToast("error", "Error Bepay", brebErr.message);
@@ -664,7 +664,7 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
                             {o.status === "approved" ? (
                               <button
                                 onClick={async () => {
-                                  await registerInBepay(o.id, o.type);
+                                  await registerInBepay(o.id, o.type, true);
                                   loadOnboardings();
                                 }}
                                 style={{ padding: "4px 10px", border: "1px solid var(--warning)", borderRadius: "var(--radius-sm)", background: "var(--warning-dim)", color: "var(--warning)", fontSize: "11px", fontWeight: 600, cursor: "pointer" }}

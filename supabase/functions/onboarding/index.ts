@@ -258,7 +258,7 @@ serve(async (req) => {
           .single();
         if (adminProfile2?.role !== "admin") throw new Error("No autorizado");
 
-        const { onboarding_id, type } = payload;
+        const { onboarding_id, type, force } = payload;
         if (!onboarding_id || !type) throw new Error("onboarding_id y type requeridos");
 
         const obTable = type === "pn" ? "onboarding_pn" : "onboarding_emp";
@@ -271,13 +271,30 @@ serve(async (req) => {
           .single();
 
         if (obErr || !ob) throw new Error("Onboarding no encontrado");
-        if (ob.breb_registered) {
+        // `force` permite reintentar aunque ya esté marcado como registrado —
+        // necesario porque intentos previos pudieron haber quedado marcados
+        // breb_registered=true con datos incorrectos (ej. sin reference).
+        if (ob.breb_registered && !force) {
           result = { success: true, message: "Ya estaba registrado en Bepay" };
           break;
         }
 
+        // Referencia estable del "usuario/subcuenta Bre-b" — debe ser EXACTAMENTE
+        // la misma que se usará después al registrar la llave en create_virtual_key
+        // (bepay-charges), porque Bepay vincula la llave a este usuario Bre-b a
+        // través de este campo. Antes no se enviaba ninguna referencia aquí, y
+        // create_virtual_key mandaba la nota interna del usuario ("Referencia
+        // opcional" del modal) como si fuera esa referencia — nunca coincidían,
+        // por eso Bepay respondía "No se encontró el usuario Bre-b para la cuenta".
+        const obDocNumber = type === "pn" ? ob.doc_number : ob.nit;
+        const obLast4 = obDocNumber ? String(obDocNumber).replace(/\D/g, "").slice(-4) : null;
+        const brebReference = obLast4 && obLast4.length === 4
+          ? `RAMPLIX${obLast4}`
+          : `RAMPLIX${String(ob.user_id).replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase()}`;
+
         // Llamar a bepay-charges → breb_register con los datos del onboarding
         const bepayPayload = type === "pn" ? {
+          reference:       brebReference,
           mobile_number:   ob.phone?.replace(/\D/g, "") ?? "",
           document_type:   ob.doc_type,
           document_number: ob.doc_number,
@@ -294,6 +311,7 @@ serve(async (req) => {
           dob:             ob.date_of_birth,
           issue_date:      ob.doc_issue_date,
         } : {
+          reference:       brebReference,
           mobile_number:   ob.phone?.replace(/\D/g, "") ?? "",
           document_type:   ob.rl_doc_type,
           document_number: ob.rl_doc_number,
