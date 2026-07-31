@@ -292,9 +292,15 @@ serve(async (req) => {
           ? `RAMPLIX${obLast4}`
           : `RAMPLIX${String(ob.user_id).replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase()}`;
 
-        // Llamar a bepay-charges → breb_register con los datos del onboarding
+        // Llamar a bepay-charges → breb_register con los datos del onboarding.
+        // `force: true` le dice a Bepay que sobreescriba/actualice el suscriptor
+        // si ya existe uno con esa misma identificación (caso "Subscriber with
+        // same Identification No. already exists") — necesario en reintentos,
+        // porque intentos previos de esta misma persona pudieron haber quedado
+        // registrados con la referencia vieja (nula/incorrecta).
         const bepayPayload = type === "pn" ? {
           reference:       brebReference,
+          force:           !!force,
           mobile_number:   ob.phone?.replace(/\D/g, "") ?? "",
           document_type:   ob.doc_type,
           document_number: ob.doc_number,
@@ -312,6 +318,7 @@ serve(async (req) => {
           issue_date:      ob.doc_issue_date,
         } : {
           reference:       brebReference,
+          force:           !!force,
           mobile_number:   ob.phone?.replace(/\D/g, "") ?? "",
           document_type:   ob.rl_doc_type,
           document_number: ob.rl_doc_number,
