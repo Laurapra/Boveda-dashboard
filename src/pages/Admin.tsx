@@ -334,6 +334,27 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
 
   const pendingOb = onboardings.filter((o) => o.status === "pending").length;
 
+  // Llama a register_in_bepay y revisa tanto el error de red/HTTP como el
+  // `success:false` que la función puede devolver con status 200 — antes solo
+  // se revisaba `error`, así que un rechazo de Bepay pasaba desapercibido y
+  // el onboarding quedaba "aprobado" pero sin usuario Bre-b registrado.
+  const registerInBepay = async (id: string, type: string) => {
+    const { data, error: brebErr } = await supabase.functions.invoke("onboarding", {
+      body: { action: "register_in_bepay", payload: { onboarding_id: id, type } },
+    });
+    if (brebErr) {
+      onToast("error", "Error Bepay", brebErr.message);
+      return false;
+    }
+    if (data?.success === false) {
+      const raw = data?.breb_response?.message ?? data?.message ?? "Error desconocido";
+      onToast("error", "Bepay rechazó el registro", typeof raw === "string" ? raw : JSON.stringify(raw));
+      return false;
+    }
+    onToast("ok", "Registrado en Bre-B", data?.message ?? "El usuario ya puede crear llaves");
+    return true;
+  };
+
   const reviewOnboarding = async (id: string, type: string, status: string, reason?: string) => {
     const { error: err } = await supabase.functions.invoke("onboarding", {
       body: { action: "review", payload: { target_id: id, type, status, reason } },
@@ -345,14 +366,7 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
 
     if (status === "approved") {
       onToast("info", "Registrando en Bre-B…", "Esto puede tomar unos segundos");
-      const { error: brebErr } = await supabase.functions.invoke("onboarding", {
-        body: { action: "register_in_bepay", payload: { onboarding_id: id, type } },
-      });
-      if (brebErr) {
-        onToast("error", "Error Bepay", brebErr.message);
-      } else {
-        onToast("ok", "Aprobado y registrado en Bre-B", "El usuario ya puede crear llaves");
-      }
+      await registerInBepay(id, type);
     } else {
       onToast("ok", "Revisión guardada", "Estado: " + status);
     }
@@ -645,6 +659,17 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
                             {o.status === "pending" ? (
                               <button onClick={() => reviewOnboarding(o.id, o.type, "in_review")} style={{ padding: "4px 10px", border: "1px solid var(--accent)", borderRadius: "var(--radius-sm)", background: "var(--accent-dim)", color: "var(--accent)", fontSize: "11px", fontWeight: 600, cursor: "pointer" }}>
                                 En revisión
+                              </button>
+                            ) : null}
+                            {o.status === "approved" ? (
+                              <button
+                                onClick={async () => {
+                                  await registerInBepay(o.id, o.type);
+                                  loadOnboardings();
+                                }}
+                                style={{ padding: "4px 10px", border: "1px solid var(--warning)", borderRadius: "var(--radius-sm)", background: "var(--warning-dim)", color: "var(--warning)", fontSize: "11px", fontWeight: 600, cursor: "pointer" }}
+                              >
+                                Reintentar Bre-B
                               </button>
                             ) : null}
                           </div>
