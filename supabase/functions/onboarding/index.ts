@@ -87,6 +87,58 @@ serve(async (req) => {
           status:           "pending",
           submitted_at:     new Date().toISOString(),
           updated_at:       new Date().toISOString(),
+
+          // ── Campos KYC ampliados (todos opcionales por ahora) ──────────
+          // 1. Datos personales
+          commercial_name:    p.commercial_name ?? `${p.first_name} ${p.middle_name ?? ""} ${p.first_surname} ${p.middle_surname ?? ""}`.replace(/\s+/g, " ").trim(),
+          nationality:        p.nationality ?? null,
+          birth_country:      p.birth_country ?? null,
+          sex:                p.sex ?? null,
+          // 2. Contacto
+          residence_country:  p.residence_country ?? null,
+          address:            p.address ?? null,
+          landline_phone:     p.landline_phone ?? null,
+          postal_code:        p.postal_code ?? null,
+          // 3. Laboral
+          profession:         p.profession ?? null,
+          economic_activity:  p.economic_activity ?? null,
+          employment_type:    p.employment_type ?? null,
+          // 4. Tributaria
+          tax_residence_country:     p.tax_residence_country ?? null,
+          has_foreign_tax_residence: p.has_foreign_tax_residence ?? null,
+          tax_id_tin:                p.tax_id_tin ?? null,
+          rut_number:                p.rut_number ?? null,
+          tax_regime:                p.tax_regime ?? null,
+          is_vat_responsible:        p.is_vat_responsible ?? null,
+          // 5. Financiera
+          monthly_expenses_range: p.monthly_expenses_range ?? null,
+          net_worth_range:        p.net_worth_range ?? null,
+          funds_origin_other:     p.funds_origin_other ?? null,
+          income_source:          p.income_source ?? null,
+          income_source_other:    p.income_source_other ?? null,
+          monthly_volume_range:   p.monthly_volume_range ?? null,
+          monthly_tx_count_range: p.monthly_tx_count_range ?? null,
+          avg_tx_value_range:     p.avg_tx_value_range ?? null,
+          max_tx_value_range:     p.max_tx_value_range ?? null,
+          // 6. Cumplimiento
+          is_pep:          p.is_pep ?? null,
+          pep_details:     p.pep_details ?? null,
+          is_pep_related:  p.is_pep_related ?? null,
+          // 7. Bancaria
+          bank_name:              p.bank_name ?? null,
+          bank_account_type:      p.bank_account_type ?? null,
+          bank_account_number:    p.bank_account_number ?? null,
+          bank_account_holder:    p.bank_account_holder ?? null,
+          bank_holder_doc_type:   p.bank_holder_doc_type ?? null,
+          bank_holder_doc_number: p.bank_holder_doc_number ?? null,
+          bank_country:           p.bank_country ?? null,
+          bank_currency:          p.bank_currency ?? null,
+          // 9. Declaraciones
+          decl_truthful_info:     p.decl_truthful_info ?? null,
+          decl_lawful_funds:      p.decl_lawful_funds ?? null,
+          decl_data_processing:   p.decl_data_processing ?? null,
+          decl_privacy_policy:    p.decl_privacy_policy ?? null,
+          decl_screening_consent: p.decl_screening_consent ?? null,
         }, { onConflict: "user_id" }).select().single();
 
         if (error) throw new Error(error.message);
@@ -153,6 +205,54 @@ serve(async (req) => {
           status:               "pending",
           submitted_at:         new Date().toISOString(),
           updated_at:           new Date().toISOString(),
+
+          // ── Campos KYB ampliados (todos opcionales por ahora) ──────────
+          // 1. General
+          commercial_name:       p.commercial_name ?? null,
+          business_description:  p.business_description ?? null,
+          incorporation_country: p.incorporation_country ?? null,
+          address:               p.address ?? null,
+          postal_code:           p.postal_code ?? null,
+          // 2. Tributaria
+          tax_regime:            p.tax_regime ?? null,
+          is_vat_responsible:    p.is_vat_responsible ?? null,
+          is_gran_contribuyente: p.is_gran_contribuyente ?? null,
+          is_autorretenedor:     p.is_autorretenedor ?? null,
+          tax_residence_country: p.tax_residence_country ?? null,
+          tax_countries:         p.tax_countries ?? null,
+          // 3. Representante legal (partes sueltas, además de rl_full_name)
+          rl_first_name:     p.rl_first_name ?? null,
+          rl_middle_name:    p.rl_middle_name ?? null,
+          rl_first_surname:  p.rl_first_surname ?? null,
+          rl_middle_surname: p.rl_middle_surname ?? null,
+          rl_nationality:    p.rl_nationality ?? null,
+          rl_birth_country:  p.rl_birth_country ?? null,
+          rl_sex:            p.rl_sex ?? null,
+          rl_address:        p.rl_address ?? null,
+          rl_position:       p.rl_position ?? null,
+          rl_profession:     p.rl_profession ?? null,
+          // 5. Financiera
+          annual_income_range:    p.annual_income_range ?? null,
+          assets_range:           p.assets_range ?? null,
+          liabilities_range:      p.liabilities_range ?? null,
+          net_worth_range:        p.net_worth_range ?? null,
+          monthly_volume_range:   p.monthly_volume_range ?? null,
+          monthly_tx_count_range: p.monthly_tx_count_range ?? null,
+          avg_tx_value_range:     p.avg_tx_value_range ?? null,
+          max_tx_value_range:     p.max_tx_value_range ?? null,
+          // 6. Bancaria
+          bank_name:           p.bank_name ?? null,
+          bank_account_type:   p.bank_account_type ?? null,
+          bank_account_number: p.bank_account_number ?? null,
+          bank_account_holder: p.bank_account_holder ?? null,
+          bank_country:        p.bank_country ?? null,
+          // 8. Declaraciones
+          decl_truthful_info:      p.decl_truthful_info ?? null,
+          decl_lawful_funds:       p.decl_lawful_funds ?? null,
+          decl_data_processing:    p.decl_data_processing ?? null,
+          decl_privacy_policy:     p.decl_privacy_policy ?? null,
+          decl_screening_consent:  p.decl_screening_consent ?? null,
+          decl_sarlaft_compliance: p.decl_sarlaft_compliance ?? null,
         }, { onConflict: "user_id" }).select().single();
 
         if (error) throw new Error(error.message);
@@ -166,6 +266,48 @@ serve(async (req) => {
         });
 
         result = { success: true, id: data?.id, status: "pending" };
+        break;
+      }
+
+      // ── Guardar accionistas / beneficiarios finales (UBO) de una empresa ──
+      // Reemplaza la lista completa cada vez que se llama (simple y suficiente
+      // para un formulario que se reenvía completo).
+      case "save_ubos": {
+        const { onboarding_emp_id, beneficiaries } = payload;
+        if (!onboarding_emp_id) throw new Error("onboarding_emp_id requerido");
+        if (!Array.isArray(beneficiaries)) throw new Error("beneficiaries debe ser una lista");
+
+        // Verificar que la empresa sea del usuario actual (o que sea admin)
+        const { data: owner } = await userClient
+          .from("onboarding_emp")
+          .select("id")
+          .eq("id", onboarding_emp_id)
+          .eq("user_id", user.id)
+          .single();
+        if (!owner) {
+          const { data: roleCheck } = await userClient.from("profiles").select("role").eq("id", user.id).single();
+          if (roleCheck?.role !== "admin") throw new Error("No autorizado para esta empresa");
+        }
+
+        await adminClient.from("onboarding_emp_ubo").delete().eq("onboarding_emp_id", onboarding_emp_id);
+
+        if (beneficiaries.length > 0) {
+          const rows = beneficiaries.map((b: Record<string, unknown>) => ({
+            onboarding_emp_id,
+            full_name:         b.full_name,
+            doc_type:          b.doc_type ?? null,
+            doc_number:        b.doc_number ?? null,
+            nationality:       b.nationality ?? null,
+            residence_country: b.residence_country ?? null,
+            ownership_pct:     b.ownership_pct ?? null,
+            is_pep:            b.is_pep ?? null,
+            funds_origin:      b.funds_origin ?? null,
+          }));
+          const { error: uboErr } = await adminClient.from("onboarding_emp_ubo").insert(rows);
+          if (uboErr) throw new Error(uboErr.message);
+        }
+
+        result = { success: true, count: beneficiaries.length };
         break;
       }
 
@@ -298,7 +440,7 @@ serve(async (req) => {
           dane_code:       ob.res_dane,
           commerce_name:   commerceName,
           email:           ob.email,
-          gender:          "Masculino",
+          gender:          ob.sex === "Femenino" ? "Femenino" : "Masculino",
           address:         ob.address ?? `Ciudad DANE ${ob.res_dane}`,
           birth_place:     ob.birth_mun ?? "Colombia",
           dob:             ob.date_of_birth,
@@ -309,8 +451,11 @@ serve(async (req) => {
           mobile_number:   ob.phone?.replace(/\D/g, "") ?? "",
           document_type:   ob.rl_doc_type,
           document_number: ob.rl_doc_number,
-          first_name:      ob.rl_full_name.split(" ")[0] ?? ob.rl_full_name,
-          first_surname:   ob.rl_full_name.split(" ").slice(1).join(" ") || ob.rl_full_name,
+          // Preferimos los campos separados (rl_first_name, etc.) si ya existen
+          // — más confiable que partir rl_full_name por espacios, que falla con
+          // apellidos compuestos o un solo nombre.
+          first_name:      ob.rl_first_name ?? ob.rl_full_name.split(" ")[0] ?? ob.rl_full_name,
+          first_surname:   ob.rl_first_surname ?? (ob.rl_full_name.split(" ").slice(1).join(" ") || ob.rl_full_name),
           dane_code:       ob.dane_code ?? "11001",
           // Mismo resguardo que en persona natural: si business_name es un
           // placeholder o muy corto, Bepay lo rechaza por tamaño.
@@ -320,7 +465,7 @@ serve(async (req) => {
             return raw.length >= 3 && !placeholder ? raw : `Comercio ${ob.rl_full_name}`;
           })(),
           email:           ob.email,
-          gender:          "Masculino",
+          gender:          ob.rl_sex === "Femenino" ? "Femenino" : "Masculino",
           address:         ob.address ?? `Ciudad DANE ${ob.dane_code ?? "11001"}`,
           birth_place:     ob.rl_birth_mun ?? "Colombia",
           dob:             ob.rl_date_of_birth ?? "1990-01-01",
