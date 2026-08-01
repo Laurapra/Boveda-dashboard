@@ -333,10 +333,12 @@ serve(async (req) => {
           const bepayJson = await bepayRes.json();
 
           if (!bepayJson.success) {
-            // Si Bepay rechaza esta llave (ej. ya existe), probamos el siguiente consecutivo
-            lastError = new Error(
-              typeof bepayJson.message === "string" ? bepayJson.message : JSON.stringify(bepayJson.message ?? bepayJson)
-            );
+            // Si Bepay rechaza esta llave (ej. ya existe), probamos el siguiente consecutivo.
+            // Se incluye la llave y referencia intentadas en el mensaje para poder
+            // diagnosticar sin depender de los logs de Supabase.
+            const rawMsg = typeof bepayJson.message === "string" ? bepayJson.message : JSON.stringify(bepayJson.message ?? bepayJson);
+            console.error("[create_virtual_key] Bepay rechazó", { attempt, keyBase, virtualKey, reference: keyBase, rawMsg });
+            lastError = new Error(`[key_value="${virtualKey}" (${virtualKey.length} car.), reference="${keyBase}"] ${rawMsg}`);
             continue;
           }
 
