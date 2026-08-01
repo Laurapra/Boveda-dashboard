@@ -405,17 +405,19 @@ serve(async (req) => {
         // create_virtual_key mandaba la nota interna del usuario ("Referencia
         // opcional" del modal) como si fuera esa referencia — nunca coincidían,
         // por eso Bepay respondía "No se encontró el usuario Bre-b para la cuenta".
-        // "ramplix" en minúsculas + 6 dígitos = 13 caracteres exactos. Bepay
-        // rechazaba key_value/reference en mayúsculas con un mensaje de largo
-        // que resultó no ser confiable (fallaba igual con 11, 12 y 13 car.);
-        // probamos en minúsculas porque el único ejemplo de su documentación
-        // ("minegocio") es todo en minúsculas. Debe coincidir EXACTO con el
-        // keyBase que calcula create_virtual_key en bepay-charges/index.ts.
+        // "ramplix" en minúsculas + 3 dígitos = 10 caracteres. El campo real
+        // de Bepay es "reference" (inglés, confirmado con su documentación
+        // oficial — "referencia" fue un paso en falso por una traducción mala
+        // que se probó antes). Ya probamos 11, 12 y 13 caracteres con
+        // "reference" correcto y los tres fallaron igual con key_value — el
+        // límite real es más corto, así que reducimos a 3 dígitos. Debe
+        // coincidir EXACTO con el keyBase que calcula create_virtual_key en
+        // bepay-charges/index.ts.
         const obDocNumber = type === "pn" ? ob.doc_number : ob.nit;
-        const obLast6 = obDocNumber ? String(obDocNumber).replace(/\D/g, "").slice(-6).padStart(6, "0") : null;
-        const brebReference = obLast6
-          ? `ramplix${obLast6}`
-          : `ramplix${String(ob.user_id).replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toLowerCase().padEnd(6, "0")}`;
+        const obLast3 = obDocNumber ? String(obDocNumber).replace(/\D/g, "").slice(-3).padStart(3, "0") : null;
+        const brebReference = obLast3
+          ? `ramplix${obLast3}`
+          : `ramplix${String(ob.user_id).replace(/[^a-zA-Z0-9]/g, "").slice(0, 3).toLowerCase().padEnd(3, "0")}`;
 
         // Llamar a bepay-charges → breb_register con los datos del onboarding.
         // `force: true` le dice a Bepay que sobreescriba/actualice el suscriptor

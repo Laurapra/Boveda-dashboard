@@ -295,12 +295,15 @@ serve(async (req) => {
         const reference = payload?.reference ? sanitize(payload.reference, 100) : null;
         const userPart  = user.id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toLowerCase();
 
-        // ── Base de la llave: ramplix + 6 dígitos de la cédula/NIT (13 car. fijos) ──
-        // Bepay rechaza key_value con "no debe ser mayor que 13 caracteres"
-        // incluso con valores de 11, 12 Y 13 caracteres exactos — el mensaje
-        // no es confiable respecto al largo. El único ejemplo que da su
-        // documentación ("minegocio") es todo en minúsculas; probamos ahora
-        // en minúsculas por si el campo es case-sensitive del lado de Bepay.
+        // ── Base de la llave: ramplix + 3 dígitos de la cédula/NIT (10 car.) ──
+        // Con la documentación oficial confirmamos que el campo se llama
+        // "reference" (inglés) — el "referencia" que probamos antes venía de
+        // una versión mal traducida de la documentación que el usuario había
+        // pegado, y era un paso en falso. También probamos 11, 12 y 13
+        // caracteres con "reference" correcto y los 3 fallaron igual con
+        // "key value no debe ser mayor que 13 caracteres" — el límite real
+        // de Bepay para key_value es más corto de lo que dice ese mensaje.
+        // Reducimos a 3 dígitos (10 car. en total) para probar por debajo.
         // Debe coincidir EXACTO con el "reference" que se calcula en
         // onboarding/index.ts → register_in_bepay (misma fórmula).
         const [pnDoc, empDoc] = await Promise.all([
@@ -308,34 +311,32 @@ serve(async (req) => {
           adminClient.from("onboarding_emp").select("nit").eq("user_id", user.id).single(),
         ]);
         const docNumber = pnDoc.data?.doc_number ?? empDoc.data?.nit ?? null;
-        const last6 = docNumber ? docNumber.replace(/\D/g, "").slice(-6).padStart(6, "0") : null;
-        const keyBase = last6 ? `ramplix${last6}` : `ramplix${userPart.slice(0, 6).toLowerCase().padEnd(6, "0")}`;
+        const last3 = docNumber ? docNumber.replace(/\D/g, "").slice(-3).padStart(3, "0") : null;
+        const keyBase = last3 ? `ramplix${last3}` : `ramplix${userPart.slice(0, 3).toLowerCase().padEnd(3, "0")}`;
 
         let lastError: any = null;
         for (let attempt = 0; attempt < 5; attempt++) {
-          // Primer intento: ramplix + 6 dígitos (13 car.). Si Bepay la rechaza
-          // (choque con otro usuario que comparte esos mismos últimos 6
+          // Primer intento: ramplix + 3 dígitos (10 car.). Si Bepay la rechaza
+          // (choque con otro usuario que comparte esos mismos últimos 3
           // dígitos), se reemplaza el ÚLTIMO carácter por un consecutivo —
-          // así el largo se mantiene siempre en 13, nunca se alarga.
+          // así el largo se mantiene siempre igual, nunca se alarga.
           const virtualKey = attempt === 0 ? keyBase : `${keyBase.slice(0, -1)}${attempt}`;
 
           // ── Registrar la llave REAL en Bepay antes de guardarla localmente ──
           // Antes esto solo se guardaba en nuestra tabla con un valor de relleno
           // ("@BETEST"), por lo que Bepay nunca supo que la llave existía —
           // de ahí el "esa llave generada no se encuentra registrada".
-          // IMPORTANTE: "referencia" (así, en español — el JSON de ejemplo de
-          // Bepay para este endpoint usa ese nombre de campo, NO "reference")
-          // aquí debe ser la MISMA referencia usada al registrar al usuario
-          // Bre-b en el onboarding — es como Bepay vincula esta llave con ese
-          // usuario ya registrado. La nota interna que la persona escribe en
-          // el modal ("Referencia opcional") NO se manda a Bepay, solo se
-          // guarda localmente.
+          // IMPORTANTE: "reference" aquí debe ser la MISMA referencia usada al
+          // registrar al usuario Bre-b en el onboarding — es como Bepay
+          // vincula esta llave con ese usuario ya registrado. La nota interna
+          // que la persona escribe en el modal ("Referencia opcional") NO se
+          // manda a Bepay, solo se guarda localmente.
           const bepayRes = await fetch(`${BEPAY_BASE}/bre-b/key/register`, {
             method: "POST",
             headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json", "Accept": "application/json" },
             body: JSON.stringify({
               account_id: accountId,
-              referencia: keyBase,
+              reference:  keyBase,
               key_value:  virtualKey,
             }),
           });
@@ -445,11 +446,7 @@ serve(async (req) => {
           headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json", "Accept": "application/json" },
           body: JSON.stringify({
             account_id:           accountId,
-            // OJO: el ejemplo oficial de Bepay para este endpoint usa el campo
-            // "referencia" (español), NO "reference" — enviábamos el campo
-            // equivocado, así que Bepay ignoraba silenciosamente nuestra
-            // referencia (probable causa raíz de los mismatches anteriores).
-            referencia:           payload.reference ?? null,
+            reference:            payload.reference ?? null,
             party_type:           "COMMERCE",
             mobile_number:        Number(payload.mobile_number),
             document_type:        payload.document_type,
