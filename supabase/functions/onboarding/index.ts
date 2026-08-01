@@ -312,7 +312,13 @@ serve(async (req) => {
           first_name:      ob.rl_full_name.split(" ")[0] ?? ob.rl_full_name,
           first_surname:   ob.rl_full_name.split(" ").slice(1).join(" ") || ob.rl_full_name,
           dane_code:       ob.dane_code ?? "11001",
-          commerce_name:   ob.business_name,
+          // Mismo resguardo que en persona natural: si business_name es un
+          // placeholder o muy corto, Bepay lo rechaza por tamaño.
+          commerce_name: (() => {
+            const raw = (ob.business_name ?? "").trim();
+            const placeholder = /^(na|n\/a|ninguna|ninguno|no aplica|-)$/i.test(raw);
+            return raw.length >= 3 && !placeholder ? raw : `Comercio ${ob.rl_full_name}`;
+          })(),
           email:           ob.email,
           gender:          "Masculino",
           address:         ob.address ?? `Ciudad DANE ${ob.dane_code ?? "11001"}`,
