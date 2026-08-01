@@ -323,17 +323,19 @@ serve(async (req) => {
           // Antes esto solo se guardaba en nuestra tabla con un valor de relleno
           // ("@BETEST"), por lo que Bepay nunca supo que la llave existía —
           // de ahí el "esa llave generada no se encuentra registrada".
-          // IMPORTANTE: "reference" aquí debe ser la MISMA referencia usada al
-          // registrar al usuario Bre-b en el onboarding (RAMPLIX+últimos 4 de su
-          // cédula/NIT) — es como Bepay vincula esta llave con ese usuario ya
-          // registrado. La nota interna que la persona escribe en el modal
-          // ("Referencia opcional") NO se manda a Bepay, solo se guarda localmente.
+          // IMPORTANTE: "referencia" (así, en español — el JSON de ejemplo de
+          // Bepay para este endpoint usa ese nombre de campo, NO "reference")
+          // aquí debe ser la MISMA referencia usada al registrar al usuario
+          // Bre-b en el onboarding — es como Bepay vincula esta llave con ese
+          // usuario ya registrado. La nota interna que la persona escribe en
+          // el modal ("Referencia opcional") NO se manda a Bepay, solo se
+          // guarda localmente.
           const bepayRes = await fetch(`${BEPAY_BASE}/bre-b/key/register`, {
             method: "POST",
             headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json", "Accept": "application/json" },
             body: JSON.stringify({
               account_id: accountId,
-              reference:  keyBase,
+              referencia: keyBase,
               key_value:  virtualKey,
             }),
           });
@@ -443,7 +445,11 @@ serve(async (req) => {
           headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json", "Accept": "application/json" },
           body: JSON.stringify({
             account_id:           accountId,
-            reference:            payload.reference ?? null,
+            // OJO: el ejemplo oficial de Bepay para este endpoint usa el campo
+            // "referencia" (español), NO "reference" — enviábamos el campo
+            // equivocado, así que Bepay ignoraba silenciosamente nuestra
+            // referencia (probable causa raíz de los mismatches anteriores).
+            referencia:           payload.reference ?? null,
             party_type:           "COMMERCE",
             mobile_number:        Number(payload.mobile_number),
             document_type:        payload.document_type,
