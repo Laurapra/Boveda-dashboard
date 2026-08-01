@@ -275,6 +275,16 @@ serve(async (req) => {
         // same Identification No. already exists") — necesario en reintentos,
         // porque intentos previos de esta misma persona pudieron haber quedado
         // registrados con la referencia vieja (nula/incorrecta).
+        // "company" en el onboarding es opcional y mucha gente pone algo como
+        // "NA" o "-" cuando no aplica — eso hace que Bepay rechace commerce_name
+        // por ser demasiado corto ("commerceName: commerce_name.size"). Si no
+        // parece un nombre real de negocio, usamos el nombre completo en su lugar.
+        const companyRaw = (ob.company ?? "").trim();
+        const looksLikePlaceholder = /^(na|n\/a|ninguna|ninguno|no aplica|-)$/i.test(companyRaw);
+        const commerceName = companyRaw.length >= 3 && !looksLikePlaceholder
+          ? companyRaw
+          : `${ob.first_name} ${ob.first_surname}`;
+
         const bepayPayload = type === "pn" ? {
           reference:       brebReference,
           force:           !!force,
@@ -286,7 +296,7 @@ serve(async (req) => {
           first_surname:   ob.first_surname,
           middle_surname:  ob.middle_surname ?? "",
           dane_code:       ob.res_dane,
-          commerce_name:   ob.company || `${ob.first_name} ${ob.first_surname}`,
+          commerce_name:   commerceName,
           email:           ob.email,
           gender:          "Masculino",
           address:         ob.address ?? `Ciudad DANE ${ob.res_dane}`,
