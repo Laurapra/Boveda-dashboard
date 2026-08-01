@@ -295,13 +295,12 @@ serve(async (req) => {
         const reference = payload?.reference ? sanitize(payload.reference, 100) : null;
         const userPart  = user.id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toLowerCase();
 
-        // ── Base de la llave: RAMPLIX + 6 dígitos de la cédula/NIT (13 car. fijos) ──
-        // Bepay rechaza key_value con el mensaje "no debe ser mayor que 13
-        // caracteres" incluso con valores de 11-12 caracteres — probamos y
-        // confirmamos que el límite real de su lado NO es un máximo, sino que
-        // exige (aprox.) 13 caracteres exactos; el mensaje de Bepay está mal
-        // redactado/traducido. Por eso ahora usamos 6 dígitos en vez de 4 para
-        // llegar a exactamente 13 caracteres ("RAMPLIX" = 7 + 6 dígitos = 13).
+        // ── Base de la llave: ramplix + 6 dígitos de la cédula/NIT (13 car. fijos) ──
+        // Bepay rechaza key_value con "no debe ser mayor que 13 caracteres"
+        // incluso con valores de 11, 12 Y 13 caracteres exactos — el mensaje
+        // no es confiable respecto al largo. El único ejemplo que da su
+        // documentación ("minegocio") es todo en minúsculas; probamos ahora
+        // en minúsculas por si el campo es case-sensitive del lado de Bepay.
         // Debe coincidir EXACTO con el "reference" que se calcula en
         // onboarding/index.ts → register_in_bepay (misma fórmula).
         const [pnDoc, empDoc] = await Promise.all([
@@ -310,11 +309,11 @@ serve(async (req) => {
         ]);
         const docNumber = pnDoc.data?.doc_number ?? empDoc.data?.nit ?? null;
         const last6 = docNumber ? docNumber.replace(/\D/g, "").slice(-6).padStart(6, "0") : null;
-        const keyBase = last6 ? `RAMPLIX${last6}` : `RAMPLIX${userPart.slice(0, 6).toUpperCase().padEnd(6, "0")}`;
+        const keyBase = last6 ? `ramplix${last6}` : `ramplix${userPart.slice(0, 6).toLowerCase().padEnd(6, "0")}`;
 
         let lastError: any = null;
         for (let attempt = 0; attempt < 5; attempt++) {
-          // Primer intento: RAMPLIX + 6 dígitos (13 car.). Si Bepay la rechaza
+          // Primer intento: ramplix + 6 dígitos (13 car.). Si Bepay la rechaza
           // (choque con otro usuario que comparte esos mismos últimos 6
           // dígitos), se reemplaza el ÚLTIMO carácter por un consecutivo —
           // así el largo se mantiene siempre en 13, nunca se alarga.

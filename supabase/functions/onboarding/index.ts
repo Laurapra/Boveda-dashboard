@@ -405,17 +405,17 @@ serve(async (req) => {
         // create_virtual_key mandaba la nota interna del usuario ("Referencia
         // opcional" del modal) como si fuera esa referencia — nunca coincidían,
         // por eso Bepay respondía "No se encontró el usuario Bre-b para la cuenta".
-        // 6 dígitos (no 4) para que "RAMPLIX" + dígitos dé exactamente 13
-        // caracteres — Bepay rechaza key_value/reference más cortos con un
-        // mensaje engañoso ("no debe ser mayor que 13 caracteres" cuando en
-        // realidad el problema era que 11-12 caracteres eran insuficientes).
-        // Debe coincidir EXACTO con el keyBase que calcula create_virtual_key
-        // en bepay-charges/index.ts.
+        // "ramplix" en minúsculas + 6 dígitos = 13 caracteres exactos. Bepay
+        // rechazaba key_value/reference en mayúsculas con un mensaje de largo
+        // que resultó no ser confiable (fallaba igual con 11, 12 y 13 car.);
+        // probamos en minúsculas porque el único ejemplo de su documentación
+        // ("minegocio") es todo en minúsculas. Debe coincidir EXACTO con el
+        // keyBase que calcula create_virtual_key en bepay-charges/index.ts.
         const obDocNumber = type === "pn" ? ob.doc_number : ob.nit;
         const obLast6 = obDocNumber ? String(obDocNumber).replace(/\D/g, "").slice(-6).padStart(6, "0") : null;
         const brebReference = obLast6
-          ? `RAMPLIX${obLast6}`
-          : `RAMPLIX${String(ob.user_id).replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toUpperCase().padEnd(6, "0")}`;
+          ? `ramplix${obLast6}`
+          : `ramplix${String(ob.user_id).replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toLowerCase().padEnd(6, "0")}`;
 
         // Llamar a bepay-charges → breb_register con los datos del onboarding.
         // `force: true` le dice a Bepay que sobreescriba/actualice el suscriptor
