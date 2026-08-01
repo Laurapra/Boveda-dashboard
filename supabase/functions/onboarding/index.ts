@@ -100,38 +100,15 @@ serve(async (req) => {
           metadata:  { doc_type: p.doc_type, full_name: `${p.first_name} ${p.first_surname}` },
         });
 
-        // Intentar registrar en Bepay Bre-B automáticamente
-        try {
-          const bepayRes = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/bepay-charges`, {
-            method: "POST",
-            headers: { "Authorization": authHeader, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "breb_register",
-              payload: {
-                mobile_number:   p.phone.replace(/\D/g, ""),
-                document_type:   p.doc_type === "Cédula (CC)" ? "CC" : p.doc_type === "Extranjería (CE)" ? "CE" : "PAS",
-                document_number: p.doc_number,
-                first_name:      p.first_name,
-                middle_name:     p.middle_name ?? "",
-                first_surname:   p.first_surname,
-                middle_surname:  p.middle_surname ?? "",
-                dane_code:       p.res_dane,
-                commerce_name:   p.company || `${p.first_name} ${p.first_surname}`,
-                email:           p.email,
-                gender:          p.gender ?? "Masculino",
-                address:         p.address ?? `Ciudad DANE ${p.res_dane}`,
-                birth_place:     p.birth_mun ?? "Colombia",
-                dob:             p.date_of_birth,
-                issue_date:      p.doc_issue_date,
-              },
-            }),
-          });
-          const bepayJson = await bepayRes.json();
-          // Guarda la respuesta de Bepay en el registro
-          await adminClient.from("onboarding_pn")
-            .update({ breb_registered: bepayJson.success === true, breb_response: bepayJson })
-            .eq("user_id", user.id);
-        } catch { /* Si Bepay falla, el onboarding se guarda igual */ }
+        // NOTA: antes aquí se intentaba registrar a la persona en Bepay Bre-b
+        // automáticamente, apenas enviaba el formulario — sin revisión de un
+        // admin y sin la referencia (RAMPLIX+últimos 4 de cédula) que usa
+        // create_virtual_key. Eso registraba a todos con reference:null, y
+        // cuando el admin aprobaba después, Bepay ya tenía a esa persona
+        // registrada con la referencia incorrecta ("Subscriber with same
+        // Identification No. already exists" al intentar corregirlo). El
+        // registro real en Bepay ahora SOLO ocurre cuando el admin aprueba
+        // (acción "register_in_bepay" más abajo), con la referencia correcta.
 
         result = { success: true, id: data?.id, status: "pending" };
         break;
