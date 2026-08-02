@@ -293,7 +293,6 @@ serve(async (req) => {
         }
 
         const reference = payload?.reference ? sanitize(payload.reference, 100) : null;
-        const userPart  = user.id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toLowerCase();
 
         // ── Base de la llave: la MISMA referencia que quedó guardada cuando
         // se registró a esta persona en Bepay (onboarding → register_in_bepay).
@@ -306,19 +305,26 @@ serve(async (req) => {
         // se desincronicen: quien registra al usuario decide la referencia,
         // esta función solo la reutiliza.
         const [pnDoc, empDoc] = await Promise.all([
-          adminClient.from("onboarding_pn").select("doc_number, breb_reference").eq("user_id", user.id).single(),
-          adminClient.from("onboarding_emp").select("nit, breb_reference").eq("user_id", user.id).single(),
+          adminClient.from("onboarding_pn").select("breb_reference").eq("user_id", user.id).single(),
+          adminClient.from("onboarding_emp").select("breb_reference").eq("user_id", user.id).single(),
         ]);
         const storedReference = pnDoc.data?.breb_reference ?? empDoc.data?.breb_reference ?? null;
-        const docNumber = pnDoc.data?.doc_number ?? empDoc.data?.nit ?? null;
-        const last3 = docNumber ? docNumber.replace(/\D/g, "").slice(-3).padStart(3, "0") : null;
-        // Fallback solo por si nunca se registró vía onboarding (ej. un admin
-        // sin onboarding propio) — en ese caso probablemente tampoco exista
-        // como comercio en Bepay y esto va a fallar más adelante, pero al
-        // menos con un valor consistente.
-        const keyBase = storedReference
-          ? storedReference
-          : last3 ? `ramplix${last3}` : `ramplix${userPart.slice(0, 3).toLowerCase().padEnd(3, "0")}`;
+
+        // Si todavía no hay una referencia guardada, es porque register_in_bepay
+        // nunca se completó con éxito para esta persona (o nunca se corrió).
+        // Antes de esto, la función "adivinaba" una referencia con la fórmula
+        // del momento y se la mandaba a Bepay igual — eso es lo que producía
+        // el confuso "no se encontró el usuario Bre-b para la cuenta": estábamos
+        // enviando una referencia que Bepay nunca había visto. Ahora avisamos
+        // con un mensaje claro en vez de intentar adivinar.
+        if (!storedReference) {
+          throw new Error(
+            "Tu cuenta todavía no tiene un registro válido en Bepay Bre-B. " +
+            "Pídele al administrador que revise el estado de tu onboarding y use " +
+            "el botón 'Reintentar Bre-B' antes de crear una billetera."
+          );
+        }
+        const keyBase = storedReference;
 
         let lastError: any = null;
         for (let attempt = 0; attempt < 5; attempt++) {
