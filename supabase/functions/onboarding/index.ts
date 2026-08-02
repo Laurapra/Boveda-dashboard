@@ -399,25 +399,33 @@ serve(async (req) => {
         }
 
         // Referencia estable del "usuario/subcuenta Bre-b" — debe ser EXACTAMENTE
-        // la misma que se usará después al registrar la llave en create_virtual_key
+        // la misma que se usa después al registrar la llave en create_virtual_key
         // (bepay-charges), porque Bepay vincula la llave a este usuario Bre-b a
-        // través de este campo. Antes no se enviaba ninguna referencia aquí, y
-        // create_virtual_key mandaba la nota interna del usuario ("Referencia
-        // opcional" del modal) como si fuera esa referencia — nunca coincidían,
-        // por eso Bepay respondía "No se encontró el usuario Bre-b para la cuenta".
-        // "ramplix" en minúsculas + 3 dígitos = 10 caracteres. El campo real
-        // de Bepay es "reference" (inglés, confirmado con su documentación
-        // oficial — "referencia" fue un paso en falso por una traducción mala
-        // que se probó antes). Ya probamos 11, 12 y 13 caracteres con
-        // "reference" correcto y los tres fallaron igual con key_value — el
-        // límite real es más corto, así que reducimos a 3 dígitos. Debe
-        // coincidir EXACTO con el keyBase que calcula create_virtual_key en
-        // bepay-charges/index.ts.
+        // través de este campo.
+        //
+        // IMPORTANTE — causa raíz de todo el ciclo de errores anteriores: la
+        // fórmula para construir esta referencia cambió varias veces mientras
+        // depurábamos (4 dígitos, 6 dígitos, mayúsculas, minúsculas...). Cada
+        // vez que cambiaba, este endpoint intentaba registrar de nuevo a la
+        // MISMA persona con una referencia DISTINTA, y Bepay ahora responde
+        // "Entrada duplicada, ya existe un comercio activo con los datos
+        // ingresados" (CA003) — no deja re-registrar el mismo documento bajo
+        // otra referencia. Mientras tanto create_virtual_key recalculaba su
+        // propia referencia con la fórmula más reciente, casi nunca la misma
+        // que Bepay realmente había aceptado.
+        //
+        // Por eso ahora la referencia se calcula UNA SOLA VEZ y se guarda en
+        // onboarding_pn.breb_reference / onboarding_emp.breb_reference; todo
+        // reintento posterior reutiliza ese mismo valor en vez de recalcularlo,
+        // y create_virtual_key lee esa misma columna en vez de tener su propia
+        // fórmula. Así, aunque el código vuelva a cambiar en el futuro, una
+        // persona ya registrada no se ve afectada.
         const obDocNumber = type === "pn" ? ob.doc_number : ob.nit;
         const obLast3 = obDocNumber ? String(obDocNumber).replace(/\D/g, "").slice(-3).padStart(3, "0") : null;
-        const brebReference = obLast3
+        const computedReference = obLast3
           ? `ramplix${obLast3}`
           : `ramplix${String(ob.user_id).replace(/[^a-zA-Z0-9]/g, "").slice(0, 3).toLowerCase().padEnd(3, "0")}`;
+        const brebReference = ob.breb_reference || computedReference;
 
         // Llamar a bepay-charges → breb_register con los datos del onboarding.
         // `force: true` le dice a Bepay que sobreescriba/actualice el suscriptor
@@ -492,19 +500,35 @@ serve(async (req) => {
         const bepayJson = await bepayRes.json();
         console.log("Bepay breb_register resultado:", JSON.stringify(bepayJson));
 
-        // Actualizar el estado en la tabla de onboarding
-        await adminClient.from(obTable).update({
+        // CA003 = "ya existe un comercio activo con los datos ingresados".
+        // Esto NO es un error de nuestro código: significa que este documento
+        // ya fue registrado como comercio en Bepay en algún intento anterior,
+        // bajo una referencia que ya no conocemos (porque la fórmula cambió).
+        // `force` no sirve para saltarse esto (solo evita el caché del QR).
+        // No hay forma de recuperar esa referencia vieja desde nuestro lado —
+        // hay que usar un documento nuevo o pedirle a Bepay que lo revise.
+        const isDuplicate = bepayJson?.data?.code === "CA003"
+          || (typeof bepayJson?.message === "string" && /ya existe.*comercio/i.test(bepayJson.message))
+          || (typeof bepayJson?.message === "object" && JSON.stringify(bepayJson.message).match(/CA003|ya existe.*comercio/i));
+
+        // Solo guardamos breb_reference la PRIMERA vez que se registra con
+        // éxito (si ya tenía una guardada, no la pisamos).
+        const updatePayload: Record<string, unknown> = {
           breb_registered: bepayJson.success === true,
           breb_response:   bepayJson,
           updated_at:      new Date().toISOString(),
-        }).eq("id", onboarding_id);
+        };
+        if (bepayJson.success === true && !ob.breb_reference) {
+          updatePayload.breb_reference = brebReference;
+        }
+        await adminClient.from(obTable).update(updatePayload).eq("id", onboarding_id);
 
         await adminClient.from("audit_log").insert({
           user_id:   user.id,
           action:    "BREB_REGISTER_AUTO",
           entity:    obTable,
           entity_id: onboarding_id,
-          metadata:  { success: bepayJson.success, message: bepayJson.message },
+          metadata:  { success: bepayJson.success, message: bepayJson.message, duplicate: isDuplicate },
         });
 
         result = {
@@ -512,7 +536,9 @@ serve(async (req) => {
           breb_response: bepayJson,
           message: bepayJson.success
             ? "Registrado exitosamente en Bepay Bre-B"
-            : `Bepay respondió: ${JSON.stringify(bepayJson.message)}`,
+            : isDuplicate
+              ? "Este documento ya está registrado como comercio en Bepay bajo una referencia anterior que ya no conocemos (probablemente de una prueba pasada). No se puede re-registrar con una referencia nueva — usa un documento distinto para pruebas, o pide a Bepay que revise/libere ese registro."
+              : `Bepay respondió: ${JSON.stringify(bepayJson.message)}`,
         };
         break;
       }

@@ -347,7 +347,10 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
       return false;
     }
     if (data?.success === false) {
-      const raw = data?.breb_response?.message ?? data?.message ?? "Error desconocido";
+      // Preferimos el mensaje explicativo que arma el backend (ej. detecta el
+      // caso de "documento ya registrado" y lo explica en español) sobre el
+      // mensaje crudo de Bepay, que solo se usa si no hay uno más claro.
+      const raw = data?.message ?? data?.breb_response?.message ?? "Error desconocido";
       onToast("error", "Bepay rechazó el registro", typeof raw === "string" ? raw : JSON.stringify(raw));
       return false;
     }

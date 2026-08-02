@@ -295,24 +295,30 @@ serve(async (req) => {
         const reference = payload?.reference ? sanitize(payload.reference, 100) : null;
         const userPart  = user.id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toLowerCase();
 
-        // ── Base de la llave: ramplix + 3 dígitos de la cédula/NIT (10 car.) ──
-        // Con la documentación oficial confirmamos que el campo se llama
-        // "reference" (inglés) — el "referencia" que probamos antes venía de
-        // una versión mal traducida de la documentación que el usuario había
-        // pegado, y era un paso en falso. También probamos 11, 12 y 13
-        // caracteres con "reference" correcto y los 3 fallaron igual con
-        // "key value no debe ser mayor que 13 caracteres" — el límite real
-        // de Bepay para key_value es más corto de lo que dice ese mensaje.
-        // Reducimos a 3 dígitos (10 car. en total) para probar por debajo.
-        // Debe coincidir EXACTO con el "reference" que se calcula en
-        // onboarding/index.ts → register_in_bepay (misma fórmula).
+        // ── Base de la llave: la MISMA referencia que quedó guardada cuando
+        // se registró a esta persona en Bepay (onboarding → register_in_bepay).
+        // Antes esta función recalculaba su propia fórmula (RAMPLIX+dígitos)
+        // en paralelo a la de onboarding/index.ts — cada vez que ajustábamos
+        // el formato durante las pruebas, las dos fórmulas dejaban de
+        // coincidir, y por eso Bepay decía "no se encontró el usuario Bre-b
+        // para la cuenta". Ahora leemos directamente breb_reference (columna
+        // agregada en la migración 20260801090000) para que sea imposible que
+        // se desincronicen: quien registra al usuario decide la referencia,
+        // esta función solo la reutiliza.
         const [pnDoc, empDoc] = await Promise.all([
-          adminClient.from("onboarding_pn").select("doc_number").eq("user_id", user.id).single(),
-          adminClient.from("onboarding_emp").select("nit").eq("user_id", user.id).single(),
+          adminClient.from("onboarding_pn").select("doc_number, breb_reference").eq("user_id", user.id).single(),
+          adminClient.from("onboarding_emp").select("nit, breb_reference").eq("user_id", user.id).single(),
         ]);
+        const storedReference = pnDoc.data?.breb_reference ?? empDoc.data?.breb_reference ?? null;
         const docNumber = pnDoc.data?.doc_number ?? empDoc.data?.nit ?? null;
         const last3 = docNumber ? docNumber.replace(/\D/g, "").slice(-3).padStart(3, "0") : null;
-        const keyBase = last3 ? `ramplix${last3}` : `ramplix${userPart.slice(0, 3).toLowerCase().padEnd(3, "0")}`;
+        // Fallback solo por si nunca se registró vía onboarding (ej. un admin
+        // sin onboarding propio) — en ese caso probablemente tampoco exista
+        // como comercio en Bepay y esto va a fallar más adelante, pero al
+        // menos con un valor consistente.
+        const keyBase = storedReference
+          ? storedReference
+          : last3 ? `ramplix${last3}` : `ramplix${userPart.slice(0, 3).toLowerCase().padEnd(3, "0")}`;
 
         let lastError: any = null;
         for (let attempt = 0; attempt < 5; attempt++) {
