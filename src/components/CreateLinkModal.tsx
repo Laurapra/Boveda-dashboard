@@ -109,8 +109,11 @@ export const CreateLinkModal: React.FC<Props> = ({ isOpen, onClose, onToast }) =
       return;
     }
 
-    const pnRes = await supabase.from("onboarding_pn").select("status").eq("user_id", user.id).single();
-    const empRes = await supabase.from("onboarding_emp").select("status").eq("user_id", user.id).single();
+    // maybeSingle() en vez de single(): una persona solo tiene fila en UNA de
+    // las dos tablas (pn o emp) — con single() la que no tiene fila devuelve
+    // 406 (ruido en consola, el resultado ya se maneja con el || de abajo).
+    const pnRes = await supabase.from("onboarding_pn").select("status").eq("user_id", user.id).maybeSingle();
+    const empRes = await supabase.from("onboarding_emp").select("status").eq("user_id", user.id).maybeSingle();
     const ob = pnRes.data || empRes.data;
 
     if (!ob) {
@@ -365,7 +368,8 @@ export const CreateLinkModal: React.FC<Props> = ({ isOpen, onClose, onToast }) =
             >
               <option value="">{keysLoading ? "Cargando llaves..." : "Sin llave - cobro generico"}</option>
               {keys.map(function (k) {
-                const label = k.reference ? "@" + k.key_value + " (" + k.reference + ")" : "@" + k.key_value;
+                const atK = k.key_value.startsWith("@") ? k.key_value : "@" + k.key_value;
+                const label = k.reference ? atK + " (" + k.reference + ")" : atK;
                 return (
                   <option key={k.id} value={k.key_value}>
                     {label}

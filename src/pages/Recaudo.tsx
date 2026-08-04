@@ -2,7 +2,6 @@
 import React, { useState } from "react";
 import { useTransactions } from "../hooks/useTransactions";
 import { Badge } from "../components/ui/Badge";
-import { RegisterBrebKeyModal } from "../components/RegisterBrebKeyModal";
 import { exportTransactionsXLSX } from "../lib/exporters";
 import type { PaymentMethod, TxStatus, ToastType } from "../types";
 
@@ -29,10 +28,9 @@ function MethodChip({ method }: { method: PaymentMethod }) {
 }
 
 export const RecaudoView: React.FC<Props> = ({ fmt, onToast }) => {
-  const [method, setMethod]               = useState<PaymentMethod | "">("");
-  const [status, setStatus]               = useState<TxStatus | "">("");
-  const [query, setQuery]                 = useState("");
-  const [brebModalOpen, setBrebModalOpen] = useState(false);
+  const [method, setMethod] = useState<PaymentMethod | "">("");
+  const [status, setStatus] = useState<TxStatus | "">("");
+  const [query, setQuery]   = useState("");
 
   const { transactions, total, loading } = useTransactions({ method, status, query });
 
@@ -58,15 +56,9 @@ export const RecaudoView: React.FC<Props> = ({ fmt, onToast }) => {
             Transacciones de entrada · Nequi, Bre-B y Links de pago
           </p>
         </div>
-        <button
-          onClick={() => setBrebModalOpen(true)}
-          style={{ display: "inline-flex", alignItems: "center", gap: "7px", padding: "10px 16px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: "var(--radius-sm)", fontWeight: 600, fontSize: "13px", cursor: "pointer" }}
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="15" height="15">
-            <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          Registrar llave Bre-B
-        </button>
+        {/* La creación/gestión de la llave Bre-B vive únicamente en "Mis
+            billeteras" (una sola llave por usuario) — se quitó el botón y el
+            modal de aquí para no tener dos flujos distintos creando llaves. */}
       </div>
 
       {/* ── Filtros ── */}
@@ -181,12 +173,6 @@ export const RecaudoView: React.FC<Props> = ({ fmt, onToast }) => {
         </div>
       </div>
 
-      {/* ── Modal Bre-B ── */}
-      <RegisterBrebKeyModal
-        isOpen={brebModalOpen}
-        onClose={() => setBrebModalOpen(false)}
-        onToast={onToast}
-      />
     </div>
   );
 };

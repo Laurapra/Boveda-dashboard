@@ -158,8 +158,12 @@ export const MovimientosView: React.FC<Props> = ({ fmt, onToast }) => {
       return;
     }
 
-    const pnRes = await supabase.from("onboarding_pn").select("status").eq("user_id", user.id).single();
-    const empRes = await supabase.from("onboarding_emp").select("status").eq("user_id", user.id).single();
+    // maybeSingle() en vez de single(): una persona solo tiene fila en UNA de
+    // las dos tablas (pn o emp), nunca ambas — con single() la consulta que
+    // no tiene fila devuelve 406 (ruido en consola aunque no rompe nada,
+    // porque el resultado ya se maneja con el || de abajo).
+    const pnRes = await supabase.from("onboarding_pn").select("status").eq("user_id", user.id).maybeSingle();
+    const empRes = await supabase.from("onboarding_emp").select("status").eq("user_id", user.id).maybeSingle();
     const ob = pnRes.data || empRes.data;
 
     if (!ob) {

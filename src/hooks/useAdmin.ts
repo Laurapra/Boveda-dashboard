@@ -71,5 +71,19 @@ export function useAdmin() {
     return null;
   };
 
-  return { users, loading, error, createUser, updateTarifa, toggleActive, refetch: fetchUsers };
+  // ── Eliminar usuario (borrado seguro) ──────────────────────────
+  // Banea el acceso y borra datos personales (KYC/KYB, beneficiarios,
+  // cuentas bancarias) vía Edge Function con service role. Las transacciones,
+  // llaves Bre-b y el log de auditoría se conservan por cumplimiento.
+  const deleteUser = async (userId: string): Promise<string | null> => {
+    const { data, error: fnErr } = await supabase.functions.invoke("admin-delete-user", {
+      body: { target_user_id: userId },
+    });
+    if (fnErr) return fnErr.message;
+    if (data?.error) return data.error;
+    await fetchUsers();
+    return null;
+  };
+
+  return { users, loading, error, createUser, updateTarifa, toggleActive, deleteUser, refetch: fetchUsers };
 }

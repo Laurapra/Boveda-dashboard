@@ -26,6 +26,11 @@ type Step = "list" | "create";
 const fmtCOP = (n: number) =>
   new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(n);
 
+// Las llaves creadas a partir de ahora ya vienen con "@" incluido (es el
+// formato real que exige la red Bre-B); las creadas antes de ese cambio no lo
+// tienen. Este helper evita mostrar "@@..." con las llaves viejas.
+const atKey = (v: string) => (v.startsWith("@") ? v : `@${v}`);
+
 export const RegisterBrebKeyModal: React.FC<Props> = ({ isOpen, onClose, onToast }) => {
   const { user } = useAuthStore();
 
@@ -81,7 +86,7 @@ export const RegisterBrebKeyModal: React.FC<Props> = ({ isOpen, onClose, onToast
 
       // Usa la llave REAL devuelta por el backend, no el preview
       const created = res.data?.key_value ?? previewKey;
-      onToast("ok", "Llave creada", `@${created} lista para recibir pagos`);
+      onToast("ok", "Llave creada", `${atKey(created)} lista para recibir pagos`);
       setReference("");
       await fetchKeys();
       setStep("list");
@@ -93,10 +98,10 @@ export const RegisterBrebKeyModal: React.FC<Props> = ({ isOpen, onClose, onToast
   };
 
   const handleDeactivate = async (keyId: string, keyValue: string) => {
-    if (!confirm(`¿Desactivar la llave @${keyValue}?`)) return;
+    if (!confirm(`¿Desactivar la llave ${atKey(keyValue)}?`)) return;
     try {
       await deactivateVirtualKey(keyId);
-      onToast("ok", "Llave desactivada", `@${keyValue}`);
+      onToast("ok", "Llave desactivada", atKey(keyValue));
       await fetchKeys();
     } catch (err: any) {
       onToast("error", "Error", err.message);
@@ -104,8 +109,8 @@ export const RegisterBrebKeyModal: React.FC<Props> = ({ isOpen, onClose, onToast
   };
 
   const copyKey = (key: string) => {
-    navigator.clipboard.writeText(key);
-    onToast("ok", "Copiado", `@${key}`);
+    navigator.clipboard.writeText(atKey(key));
+    onToast("ok", "Copiado", atKey(key));
   };
 
   const statusChip = (status: string) => {
@@ -177,7 +182,7 @@ export const RegisterBrebKeyModal: React.FC<Props> = ({ isOpen, onClose, onToast
                 <div key={k.id} style={{ padding: "14px 16px", background: "var(--elevated)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
                     <code style={{ fontFamily: "var(--mono)", fontSize: "15px", fontWeight: 700, color: "var(--accent)" }}>
-                      @{k.key_value}
+                      {atKey(k.key_value)}
                     </code>
                     {statusChip(k.status)}
                   </div>

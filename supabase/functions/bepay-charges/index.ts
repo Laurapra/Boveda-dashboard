@@ -324,15 +324,65 @@ serve(async (req) => {
             "el botón 'Reintentar Bre-B' antes de crear una billetera."
           );
         }
-        const keyBase = storedReference;
+        // "reference" (vincula la llave con el usuario Bre-b ya registrado, SIEMPRE
+        // el subcomercio guardado — nunca se elige a mano) y "key_value" (el
+        // alias público de la llave) son cosas DISTINTAS.
+        //
+        // Formato confirmado con soporte de Bepay (2 ago 2026) — y con una
+        // corrección tras probarlo: Bepay AGREGA el prefijo "BE" por su
+        // cuenta a lo que nosotros mandamos (comprobado: mandamos
+        // "BERAMPLI00" y la llave final quedó "@BEBERAMPLI00" — el "BE" se
+        // duplicó). Así que NOSOTROS ya no debemos incluir "BE" — solo
+        // "RAMPLIX" + consecutivo; Bepay le antepone el "BE" al confirmarla.
+        // "RAMPLIX" es un prefijo propio, no una palabra genérica, así que
+        // no debería chocar con el alias real de otra persona en la red
+        // (a diferencia de "jesus" o "minegocio", que sí chocaron antes).
+        //
+        // Si el formulario manda un key_value explícito, se usa tal cual
+        // (validado en largo/caracteres). Si no manda nada, se genera
+        // automáticamente con el consecutivo global siguiente.
+        const manualKeyValue = payload?.key_value ? sanitize(payload.key_value, 13) : null;
+        if (manualKeyValue && !/^[a-zA-Z0-9@._-]+$/.test(manualKeyValue)) {
+          throw new Error("La llave solo puede tener letras, números y @ . _ -");
+        }
+        if (manualKeyValue && manualKeyValue.length > 13) {
+          throw new Error("La llave no puede tener más de 13 caracteres");
+        }
+        // Bepay antepone "BE" automáticamente a lo que mandemos — si la
+        // persona ya escribe algo que empieza con "BE" (a mano), quedaría
+        // duplicado (ej. "BEBERAMPLI00", como pasó antes). Se avisa en vez
+        // de arriesgarse a repetir el mismo error silenciosamente.
+        if (manualKeyValue && /^be/i.test(manualKeyValue)) {
+          throw new Error('No escribas "BE" al inicio — Bepay lo agrega automáticamente. Escribe solo el resto (ej. "RAMPLIX000").');
+        }
+
+        // Consecutivo GLOBAL (no por usuario) — el namespace de key_value es
+        // compartido por toda la cuenta 437, así que dos clientes de Ramplix
+        // no pueden terminar con el mismo RAMPLIX0NN.
+        const { count: existingCount } = await adminClient
+          .from("breb_keys")
+          .select("*", { count: "exact", head: true })
+          .ilike("key_value", "%ramplix%");
+        const startConsecutivo = (existingCount ?? 0);
+        const suffixNum = String(startConsecutivo).padStart(2, "0");
+
+        // El límite real de Bepay parece más corto que los 13 caracteres que
+        // reportan (ya falló con 10, 11 y 12 antes de agregar el "BE" que
+        // ellos ponen). Por eso, si no mandaron un key_value manual,
+        // probamos variantes cada vez MÁS CORTAS hasta que alguna pase.
+        const candidates = manualKeyValue
+          ? [manualKeyValue]
+          : [
+              `RAMPLIX${String(startConsecutivo).padStart(3, "0")}`, // 10 car. (+BE de Bepay = 12)
+              `RAMPLI${suffixNum}`,                                  // 8 car.  (+BE = 10)
+              `RAMPL${suffixNum}`,                                   // 7 car.  (+BE = 9)
+              `RAMP${suffixNum}`,                                    // 6 car.  (+BE = 8)
+              `RAM${suffixNum}`,                                     // 5 car.  (+BE = 7)
+            ];
 
         let lastError: any = null;
-        for (let attempt = 0; attempt < 5; attempt++) {
-          // Primer intento: ramplix + 3 dígitos (10 car.). Si Bepay la rechaza
-          // (choque con otro usuario que comparte esos mismos últimos 3
-          // dígitos), se reemplaza el ÚLTIMO carácter por un consecutivo —
-          // así el largo se mantiene siempre igual, nunca se alarga.
-          const virtualKey = attempt === 0 ? keyBase : `${keyBase.slice(0, -1)}${attempt}`;
+        for (let attempt = 0; attempt < candidates.length; attempt++) {
+          const virtualKey = candidates[attempt];
 
           // ── Registrar la llave REAL en Bepay antes de guardarla localmente ──
           // Antes esto solo se guardaba en nuestra tabla con un valor de relleno
@@ -348,7 +398,7 @@ serve(async (req) => {
             headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json", "Accept": "application/json" },
             body: JSON.stringify({
               account_id: accountId,
-              reference:  keyBase,
+              reference:  storedReference,
               key_value:  virtualKey,
             }),
           });
@@ -359,19 +409,31 @@ serve(async (req) => {
             // Se incluye la llave y referencia intentadas en el mensaje para poder
             // diagnosticar sin depender de los logs de Supabase.
             const rawMsg = typeof bepayJson.message === "string" ? bepayJson.message : JSON.stringify(bepayJson.message ?? bepayJson);
-            console.error("[create_virtual_key] Bepay rechazó", { attempt, keyBase, virtualKey, reference: keyBase, rawMsg });
-            lastError = new Error(`[key_value="${virtualKey}" (${virtualKey.length} car.), reference="${keyBase}"] ${rawMsg}`);
+            console.error("[create_virtual_key] Bepay rechazó", { attempt, virtualKey, reference: storedReference, rawMsg });
+            lastError = new Error(`[key_value="${virtualKey}" (${virtualKey.length} car.), reference="${storedReference}"] ${rawMsg}`);
             continue;
           }
 
+          // ── Llave final mostrada al usuario: "@BE" + lo que generamos ──
+          // Confirmado con una prueba real: mandamos key_value="BERAMPLI00"
+          // (ya con "BE" incluido) y Bepay devolvió la llave creada como
+          // "@BEBERAMPLI00" — es decir, Bepay SIEMPRE antepone "BE" a lo que
+          // mandamos, de forma predecible. Ahora que virtualKey ya NO incluye
+          // "BE" (ver arriba), la llave real y final es simplemente
+          // "@BE" + virtualKey. Construirla así es más confiable que tratar
+          // de adivinar el nombre del campo en la respuesta de Bepay (que no
+          // está documentado y puede no venir siempre) — pero igual guardamos
+          // la respuesta completa en bepay_response por si hace falta revisar.
+          const confirmedKey = `@BE${virtualKey}`;
+
           const { data, error } = await adminClient.from("breb_keys").insert({
             user_id:          user.id,
-            key_value:        virtualKey,
+            key_value:        confirmedKey,
             reference,
-            consecutivo:      attempt + 1,
+            consecutivo:      startConsecutivo + attempt + 1,
             status:           "ACTIVE",
             is_virtual:       false,
-            real_account_key: bepayJson.data?.key_value ?? virtualKey,
+            real_account_key: confirmedKey,
             bepay_response:   bepayJson.data ?? bepayJson,
           }).select().single();
 
@@ -392,6 +454,46 @@ serve(async (req) => {
         }
 
         if (!result) throw new Error(lastError?.message ?? "No se pudo generar una llave única tras varios intentos");
+        break;
+      }
+
+      // ── Verificar en Bepay si una llave está realmente activa ─────
+      // Usa el endpoint que Bepay documenta para que el REMITENTE consulte
+      // una llave antes de enviarle plata (GET /payout/get/{key}). Sirve para
+      // diagnosticar "llave no disponible en Bre-b" desde Nequi/Nu: si Bepay
+      // tampoco la reconoce, el problema es del registro (o de propagación a
+      // la red Bre-B); si Bepay SÍ la reconoce pero el banco no, es un tema
+      // de sincronización de la red Bre-B, no de nuestro código.
+      case "check_breb_key": {
+        const keyValue = sanitize(payload?.key_value, 30);
+
+        if (profile.role !== "admin") {
+          const { data: keyOwner } = await userClient
+            .from("breb_keys")
+            .select("id")
+            .eq("key_value", keyValue)
+            .eq("user_id", user.id)
+            .single();
+          if (!keyOwner) throw new Error("Llave no encontrada o no pertenece a tu cuenta");
+        }
+
+        // Probamos con y sin "@" — el ejemplo de Bepay para ENVIAR dinero a una
+        // llave usa el formato "@BE12345678" (con arroba), mientras que el de
+        // REGISTRAR una llave no la lleva ("minegocio"). No queda claro en la
+        // documentación cuál espera este endpoint de consulta, así que
+        // devolvemos ambos resultados para comparar de una vez.
+        const [plainRes, atRes] = await Promise.all([
+          fetch(`${BEPAY_BASE}/payout/get/${encodeURIComponent(keyValue)}`, {
+            headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json", "Accept": "application/json" },
+          }).then(r => r.json()),
+          fetch(`${BEPAY_BASE}/payout/get/${encodeURIComponent("@" + keyValue)}`, {
+            headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json", "Accept": "application/json" },
+          }).then(r => r.json()),
+        ]);
+        result = {
+          success: plainRes?.success === true || atRes?.success === true,
+          data: { without_at: plainRes, with_at: atRes },
+        };
         break;
       }
 

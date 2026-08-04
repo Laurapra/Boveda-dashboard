@@ -150,9 +150,23 @@ export async function getOnboardingStatus() {
 export async function getOnboardingUploadUrl(docType: string, ext = "jpg") {
   return callOnboarding("get_upload_url", { doc_type: docType, ext });
 }
-// ── Llaves virtuales (control interno, NO llama a Bepay) ──────────
-export async function createVirtualKey(reference?: string) {
-  return callBepay("bepay-charges", "create_virtual_key", { reference });
+// ── Llaves virtuales ────────────────────────────────────────────────
+// keyValue: opcional — si se manda, se usa tal cual como key_value en vez
+// de que el backend genere una automática.
+export async function createVirtualKey(reference?: string, keyValue?: string) {
+  return callBepay("bepay-charges", "create_virtual_key", { reference, key_value: keyValue });
+}
+
+// Trae el estado de onboarding, incluyendo la referencia Bre-b guardada
+// (account_id 437 fijo del lado del backend, y el subcomercio ya registrado).
+export async function getBrebRegistration(): Promise<{ accountId: number; reference: string | null; registered: boolean }> {
+  const res = await callOnboarding("get_status", {});
+  const ob = res?.pn ?? res?.emp ?? null;
+  return {
+    accountId: 437,
+    reference: ob?.breb_reference ?? null,
+    registered: !!ob?.breb_registered,
+  };
 }
 
 export async function getVirtualKeys() {
@@ -161,6 +175,12 @@ export async function getVirtualKeys() {
 
 export async function deactivateVirtualKey(keyId: string) {
   return callBepay("bepay-charges", "deactivate_virtual_key", { key_id: keyId });
+}
+
+// Consulta directo en Bepay si una llave está activa en la red Bre-B —
+// útil para diagnosticar "llave no disponible" que reportan Nequi/Nu.
+export async function checkBrebKey(keyValue: string) {
+  return callBepay("bepay-charges", "check_breb_key", { key_value: keyValue });
 }
 
 // ← AQUÍ, agrega esta nueva función

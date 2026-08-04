@@ -314,8 +314,8 @@ serve(async (req) => {
       // ── Consultar estado del onboarding ───────────────────────
       case "get_status": {
         const [pnRes, empRes] = await Promise.all([
-          userClient.from("onboarding_pn").select("id, status, submitted_at, breb_registered").eq("user_id", user.id).single(),
-          userClient.from("onboarding_emp").select("id, status, submitted_at, breb_registered").eq("user_id", user.id).single(),
+          userClient.from("onboarding_pn").select("id, status, submitted_at, breb_registered, breb_reference").eq("user_id", user.id).single(),
+          userClient.from("onboarding_emp").select("id, status, submitted_at, breb_registered, breb_reference").eq("user_id", user.id).single(),
         ]);
         result = {
           success: true,

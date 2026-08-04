@@ -229,7 +229,7 @@ interface UserSummaryRow {
 type TabKey = "usuarios" | "onboardings" | "saldos";
 
 export const AdminView: React.FC<Props> = ({ onToast }) => {
-  const { users, loading, error, createUser, updateTarifa, toggleActive } = useAdmin();
+  const { users, loading, error, createUser, updateTarifa, toggleActive, deleteUser } = useAdmin();
 
   const [tab, setTab] = useState<TabKey>("usuarios");
   const [createOpen, setCreateOpen] = useState(false);
@@ -406,6 +406,16 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
     else onToast("ok", currentActive ? "Usuario desactivado" : "Usuario activado", name);
   };
 
+  // Borrado seguro: bloquea el acceso y borra datos personales (KYC/KYB,
+  // beneficiarios, cuentas bancarias). Las transacciones y el log de
+  // auditoría se conservan por cumplimiento — no es reversible desde la UI.
+  const handleDelete = async (userId: string, name: string) => {
+    if (!confirm(`¿Eliminar a ${name}? Se bloqueará su acceso y se borrarán sus datos personales (KYC, beneficiarios, cuentas bancarias). Las transacciones quedan conservadas por cumplimiento. Esta acción no se puede deshacer desde aquí.`)) return;
+    const err = await deleteUser(userId);
+    if (err) onToast("error", "Error", err);
+    else onToast("ok", "Usuario eliminado", name);
+  };
+
   const filtered = users.filter((u) => {
     const q = query.toLowerCase();
     return !q || u.full_name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
@@ -569,12 +579,21 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
                                 Tarifa
                               </button>
                               {u.role !== "admin" ? (
-                                <button
-                                  onClick={() => handleToggle(u.id, u.is_active, u.full_name)}
-                                  style={{ padding: "5px 10px", border: "1px solid " + (u.is_active ? "rgba(239,68,68,.3)" : "rgba(34,197,94,.3)"), borderRadius: "var(--radius-sm)", background: u.is_active ? "var(--error-dim)" : "var(--success-dim)", color: u.is_active ? "var(--error)" : "var(--success)", fontSize: "12px", fontWeight: 600, cursor: "pointer" }}
-                                >
-                                  {u.is_active ? "Desactivar" : "Activar"}
-                                </button>
+                                <>
+                                  <button
+                                    onClick={() => handleToggle(u.id, u.is_active, u.full_name)}
+                                    style={{ padding: "5px 10px", border: "1px solid " + (u.is_active ? "rgba(239,68,68,.3)" : "rgba(34,197,94,.3)"), borderRadius: "var(--radius-sm)", background: u.is_active ? "var(--error-dim)" : "var(--success-dim)", color: u.is_active ? "var(--error)" : "var(--success)", fontSize: "12px", fontWeight: 600, cursor: "pointer" }}
+                                  >
+                                    {u.is_active ? "Desactivar" : "Activar"}
+                                  </button>
+                                  <button
+                                    onClick={() => handleDelete(u.id, u.full_name)}
+                                    title="Bloquea el acceso y borra datos personales — conserva transacciones por cumplimiento"
+                                    style={{ padding: "5px 10px", border: "1px solid rgba(239,68,68,.3)", borderRadius: "var(--radius-sm)", background: "transparent", color: "var(--error)", fontSize: "12px", fontWeight: 600, cursor: "pointer" }}
+                                  >
+                                    Eliminar
+                                  </button>
+                                </>
                               ) : null}
                             </div>
                           </td>

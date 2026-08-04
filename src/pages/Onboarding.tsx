@@ -44,8 +44,6 @@ function useGeo() {
   const [cities,  setCities]  = useState<BepayCity[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { loadGeo(); }, []);
-
   const loadGeo = async () => {
     setLoading(true);
     try {
@@ -83,6 +81,20 @@ function useGeo() {
       setLoading(false);
     }
   };
+
+  // Va después de declarar loadGeo — antes daba "Cannot access variable
+  // before it is declared" porque el useEffect estaba arriba de la función.
+  // Envuelto en una promesa resuelta (en vez de llamar loadGeo directo) para
+  // no disparar setState de forma síncrona dentro del efecto (regla
+  // react-hooks/set-state-in-effect).
+  useEffect(() => {
+    let cancelled = false;
+    Promise.resolve().then(async () => {
+      if (cancelled) return;
+      await loadGeo();
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   const getCitiesByRegion = (regionId: number) =>
     cities.filter(c => c.region_id === regionId)
@@ -333,7 +345,15 @@ export const OnboardingView: React.FC<Props> = ({ onToast }) => {
 
 // 2. Luego el useEffect que la usa
 useEffect(() => {
-  checkStatus();
+  // No llamar checkStatus() directo en el cuerpo del efecto — dispara
+  // setState de forma síncrona dentro del efecto (regla
+  // react-hooks/set-state-in-effect). Se envuelve en una promesa resuelta
+  // con guard de "cancelled", mismo patrón que el resto del proyecto.
+  let cancelled = false;
+  Promise.resolve().then(async () => {
+    if (cancelled) return;
+    await checkStatus();
+  });
 
   const chPn = supabase.channel("ob-pn-status")
     .on("postgres_changes", { event:"UPDATE", schema:"public", table:"onboarding_pn" }, () => checkStatus())
@@ -344,6 +364,7 @@ useEffect(() => {
     .subscribe();
 
   return () => {
+    cancelled = true;
     supabase.removeChannel(chPn);
     supabase.removeChannel(chEmp);
   };
@@ -440,8 +461,8 @@ useEffect(() => {
       setExistingStatus("pending");
       onToast("ok", "Solicitud enviada", "El equipo de Ramplix revisará tu información");
       setStage("success");
-    } catch (err: any) {
-      onToast("error", "Error", err.message);
+    } catch (err: unknown) {
+      onToast("error", "Error", err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }

@@ -39,25 +39,36 @@ export const ResetPassword: React.FC<Props> = ({ onDone }) => {
   //    (por defecto en supabase-js) crea la sesión sola — solo confirmamos que exista.
   // 3) Error explícito en el hash: #error=access_denied&error_code=otp_expired...
   useEffect(() => {
-    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-    if (hashParams.get("error")) {
-      setStage("expired");
-      return;
-    }
+    // Todo el cuerpo va envuelto en una promesa resuelta (con guard
+    // "cancelled") en vez de llamar setState directo en el cuerpo del
+    // efecto — evita el warning de react-hooks/set-state-in-effect y de
+    // paso deja un solo lugar para cortar si el componente se desmonta.
+    let cancelled = false;
 
-    const searchParams = new URLSearchParams(window.location.search);
-    const th = searchParams.get("token_hash");
-    const type = searchParams.get("type");
-    if (th && type === "recovery") {
-      setTokenHash(th);
-      setStage("confirm");
-      return;
-    }
+    Promise.resolve().then(async () => {
+      if (cancelled) return;
 
-    (async () => {
+      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+      if (hashParams.get("error")) {
+        setStage("expired");
+        return;
+      }
+
+      const searchParams = new URLSearchParams(window.location.search);
+      const th = searchParams.get("token_hash");
+      const type = searchParams.get("type");
+      if (th && type === "recovery") {
+        setTokenHash(th);
+        setStage("confirm");
+        return;
+      }
+
       const { data } = await supabase.auth.getSession();
+      if (cancelled) return;
       setStage(data.session ? "form" : "expired");
-    })();
+    });
+
+    return () => { cancelled = true; };
   }, []);
 
   const handleConfirm = async () => {

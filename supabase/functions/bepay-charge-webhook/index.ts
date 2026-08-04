@@ -7,9 +7,11 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Confirmado con un pago real a llave Bre-b (3 ago 2026, ide
+// 05364730-17f6-4d0d-aa23-510efac479ea, ver detalles completos abajo).
 interface ChargeWebhookPayload {
   status: string;
-  paymentmethod?: string;
+  paymentmethod?: string; // "MOVII_BREB_KEY" para pagos directos a la llave
   qr_type?: string;
   transaction_ide?: string;
   transacton_ide?: string;
@@ -17,6 +19,7 @@ interface ChargeWebhookPayload {
   transacton_id?: number;
   transaction_total?: string;
   transaction_description?: string;
+  transaction_extra2?: string; // trae la "reference" (ej. "ramplix061")
   traceability_code?: string;
   started_at?: string;
   processed_at?: string;
@@ -24,6 +27,21 @@ interface ChargeWebhookPayload {
   payer_document?: string;
   account_id?: number;
   financial_entity?: string;
+  // Para pagos MOVII_BREB_KEY, checkout/transactionStatus responde "Invalid
+  // transaction token" (ese endpoint es solo para transacciones de checkout
+  // link/QR) — el detalle real, incluida la llave receptora, viene aquí
+  // mismo en el webhook, no en la verificación.
+  details?: {
+    data?: {
+      Creditor?: {
+        PartyIdentifier?: string; // ej. "@beramplix010" — la llave real que recibió el pago
+        PartyAlias?: string;      // ej. "BE STIFF CARRILLO"
+      };
+      GlobalTransactionInfAndSts?: {
+        GlobalTxStatus?: string; // "ACCP" = aceptada
+      };
+    };
+  };
 }
 
 serve(async (req) => {
@@ -86,36 +104,112 @@ serve(async (req) => {
     const statusJson = await statusRes.json();
     console.log("[bepay-charge-webhook] Verificación oficial:", JSON.stringify(statusJson));
 
-    const verifiedData = statusJson.data ?? payload;
+    // OJO: statusJson.data puede venir como [] (array vacío) cuando el ide
+    // no aplica para este endpoint (ej. pagos MOVII_BREB_KEY responden
+    // "Invalid transaction token" con data:[]). "[] ?? payload" NO cae al
+    // fallback porque [] no es null/undefined — hay que revisar explícito.
+    const hasValidStatusData = statusJson?.success === true && statusJson?.data && !Array.isArray(statusJson.data);
+    const verifiedData = hasValidStatusData ? statusJson.data : payload;
     const finalStatus = verifiedData.status ?? payload.status;
+    // Preferimos el dato verificado (transactionStatus) si viene, si no el
+    // que mandó el webhook directamente.
+    const payerName = verifiedData.payer_name ?? payload.payer_name ?? null;
+    const payerDocument = verifiedData.payer_document ?? payload.payer_document ?? null;
 
     // ── Buscar la transacción local por bepay_ide ──────────────────
-    const { data: txRow } = await adminClient
+    let { data: txRow } = await adminClient
       .from("bepay_transactions")
       .select("id, user_id")
       .eq("bepay_ide", ide)
       .single();
 
     if (!txRow) {
-      console.warn("[bepay-charge-webhook] No se encontró transacción local para ide:", ide);
-      return new Response(JSON.stringify({ received: true, matched: false }), {
-        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+      // No existe fila local — esto pasa cuando alguien transfiere DIRECTO
+      // a la llave Bre-b desde su banco (Nequi, Nu, etc.), sin pasar por un
+      // link/QR generado por nosotros (que sí crea la fila de antemano en
+      // create_link/create_qr). Antes esto se descartaba silenciosamente —
+      // el dinero llegaba en Bepay pero el movimiento nunca aparecía en
+      // "Mis billeteras". Ahora se busca a qué llave/usuario pertenece y se
+      // crea la fila aquí mismo.
+      console.warn("[bepay-charge-webhook] No hay transacción local para ide:", ide, "- intentando crear una nueva a partir de la llave receptora");
 
-    // ── Actualiza con el estado verificado ──────────────────────────
-    const { error: updateErr } = await adminClient
-      .from("bepay_transactions")
-      .update({
-        status: finalStatus,
-        payment_method: payload.paymentmethod ?? null,
-        raw_response: verifiedData,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", txRow.id);
+      // Confirmado con un caso real: la llave receptora viene en
+      // details.data.Creditor.PartyIdentifier (ej. "@beramplix010").
+      const candidateKey =
+        payload.details?.data?.Creditor?.PartyIdentifier ??
+        verifiedData.details?.data?.Creditor?.PartyIdentifier ??
+        null;
 
-    if (updateErr) {
-      console.error("[bepay-charge-webhook] Error actualizando:", updateErr.message);
+      let matchedKey: { key_value: string; user_id: string } | null = null;
+      if (candidateKey) {
+        const plain = String(candidateKey).replace(/^@/, "");
+        const { data: keyRow } = await adminClient
+          .from("breb_keys")
+          .select("key_value, user_id")
+          .or(`key_value.eq.${plain},key_value.eq.@${plain}`)
+          .limit(1)
+          .maybeSingle();
+        matchedKey = keyRow ?? null;
+      }
+
+      if (!matchedKey) {
+        console.error(
+          "[bepay-charge-webhook] No se pudo determinar la llave/usuario receptor para ide:", ide,
+          "- candidateKey probado:", candidateKey,
+          "- revisar el payload completo en el log anterior para ubicar el campo correcto"
+        );
+        return new Response(JSON.stringify({ received: true, matched: false, reason: "no_local_row_and_no_key_match" }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const amount = Number(verifiedData.transaction_total ?? payload.transaction_total ?? 0);
+      const { data: inserted, error: insertErr } = await adminClient
+        .from("bepay_transactions")
+        .insert({
+          user_id: matchedKey.user_id,
+          bepay_ide: ide,
+          type: "charge",
+          amount,
+          concept: verifiedData.transaction_description ?? payload.transaction_description ?? "Recaudo Bre-b",
+          status: finalStatus,
+          account_key: matchedKey.key_value,
+          payment_method: payload.paymentmethod ?? "breb",
+          payer_name: payerName,
+          payer_document: payerDocument,
+          raw_response: verifiedData,
+        })
+        .select("id, user_id")
+        .single();
+
+      if (insertErr || !inserted) {
+        console.error("[bepay-charge-webhook] Error creando transacción nueva:", insertErr?.message);
+        return new Response(JSON.stringify({ received: true, matched: false, error: insertErr?.message }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      txRow = inserted;
+      // El incremento de total_received para llaves lo hace el bloque
+      // compartido de abajo (usa txRow.id, ya sea fila nueva o existente) —
+      // no duplicar aquí.
+    } else {
+      // ── Actualiza con el estado verificado ──────────────────────────
+      const { error: updateErr } = await adminClient
+        .from("bepay_transactions")
+        .update({
+          status: finalStatus,
+          payment_method: payload.paymentmethod ?? null,
+          payer_name: payerName,
+          payer_document: payerDocument,
+          raw_response: verifiedData,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", txRow.id);
+
+      if (updateErr) {
+        console.error("[bepay-charge-webhook] Error actualizando:", updateErr.message);
+      }
     }
 
     // Si se aprobó y tiene llave virtual asociada, incrementa el total recibido
@@ -144,7 +238,7 @@ serve(async (req) => {
         bepay_ide: ide,
         status: finalStatus,
         paymentmethod: payload.paymentmethod,
-        payer_name: payload.payer_name,
+        payer_name: payerName,
       },
     });
 

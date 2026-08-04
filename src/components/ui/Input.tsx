@@ -1,5 +1,5 @@
 // src/components/ui/Input.tsx
-import React from "react";
+import React, { useId } from "react";
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
@@ -8,11 +8,19 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   prefix?: string; // símbolo antes del input, ej: "$"
 }
 
-export const Input: React.FC<InputProps> = ({ label, error, help, prefix, style, ...props }) => {
+export const Input: React.FC<InputProps> = ({ label, error, help, prefix, style, id, name, ...props }) => {
+  // Chrome/Lighthouse marcan como incumplimiento cualquier <input> sin id ni
+  // name (rompe el autocompletado del navegador). Antes dependía de que cada
+  // pantalla pasara id/name a mano — la mayoría no lo hacía. Con useId()
+  // queda garantizado un id único aunque nadie lo pase explícitamente, y el
+  // <label> se asocia con htmlFor (bonus: clic en la etiqueta enfoca el input).
+  const autoId = useId();
+  const inputId = id ?? autoId;
+  const inputName = name ?? id ?? autoId;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
       {label && (
-        <label style={{ fontSize: "12.5px", fontWeight: 600, color: "var(--t2)" }}>
+        <label htmlFor={inputId} style={{ fontSize: "12.5px", fontWeight: 600, color: "var(--t2)" }}>
           {label}
           {props.required && <span style={{ color: "var(--accent)", marginLeft: "3px" }}>*</span>}
         </label>
@@ -27,6 +35,8 @@ export const Input: React.FC<InputProps> = ({ label, error, help, prefix, style,
           </span>
         )}
         <input
+          id={inputId}
+          name={inputName}
           style={{
             width: "100%",
             padding: prefix ? "10px 12px 10px 26px" : "10px 12px",
