@@ -1,7 +1,7 @@
 // src/pages/Onboarding.tsx
 import React, { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
-import { submitOnboardingPN, submitOnboardingEmp, getOnboardingStatus } from "../lib/bepayClient";
+import { submitOnboardingPN, submitOnboardingEmp, getOnboardingStatus, saveUbos } from "../lib/bepayClient";
 import type { ToastType } from "../types";
 
 interface Props {
@@ -107,8 +107,37 @@ function useGeo() {
 type ObType  = "" | "pn" | "emp";
 type ObStage = "checking" | "tipo" | "form" | "success";
 
-const PN_STEPS  = ["Identificación", "Contacto", "Actividad", "Documentos"];
-const EMP_STEPS = ["Empresa", "Actividad", "Rep. Legal", "Documentos"];
+const PN_STEPS  = ["Identificación", "Contacto", "Actividad y tributaria", "Financiera", "Cumplimiento y banco", "Documentos"];
+const EMP_STEPS = ["Empresa", "Tributaria", "Rep. Legal", "Financiera y banco", "Beneficiarios finales", "Documentos"];
+
+// ── Listas de opciones (cuestionario KYC/KYB) ──────────────────────
+const COUNTRIES = [
+  "Colombia","Estados Unidos","México","España","Argentina","Chile","Perú",
+  "Ecuador","Venezuela","Panamá","Brasil","Canadá","Otro",
+];
+
+const PN_INCOME_RANGES   = ["Menos de USD 1,000","USD 1,000 – 5,000","USD 5,001 – 10,000","USD 10,001 – 25,000","USD 25,001 – 50,000","USD 50,001 – 100,000","Más de USD 100,000"];
+const PN_EXPENSE_RANGES  = ["Menos de USD 1,000","USD 1,001 – 5,000","USD 5,001 – 10,000","USD 10,001 – 25,000","USD 25,001 – 50,000","USD 50,001 – 100,000","Más de USD 100,000"];
+const PN_NETWORTH_RANGES = ["Menos de USD 25,000","USD 25,001 – 50,000","USD 50,001 – 100,000","USD 100,001 – 500,000","USD 500,001 – 1,000,000","USD 1,000,001 – 5,000,000","Más de USD 5,000,000"];
+const PN_FUNDS_ORIGIN = ["Salario","Honorarios","Actividad comercial","Inversiones","Dividendos","Venta de activos","Herencia","Ahorros","Rendimientos financieros","Activos virtuales (Criptomonedas)","Otro"];
+const PN_INCOME_SOURCE = ["Empleado","Independiente","Empresario","Rentista de capital","Pensionado","Inversionista","Comercio internacional","Minería de criptoactivos","Otro"];
+const PN_VOLUME_RANGES  = ["Menos de USD 5,000","USD 5,001 – 25,000","USD 25,001 – 50,000","USD 50,001 – 100,000","USD 100,001 – 500,000","USD 500,001 – 1,000,000","Más de USD 1,000,000"];
+const PN_TXCOUNT_RANGES = ["1 – 10","11 – 50","51 – 100","101 – 500","501 – 1,000","Más de 1,000"];
+const PN_AVGTX_RANGES   = ["Menos de USD 500","USD 501 – 2,500","USD 2,501 – 5,000","USD 5,001 – 10,000","USD 10,001 – 50,000","USD 50,001 – 100,000","Más de USD 100,000"];
+const PN_MAXTX_RANGES   = ["Menos de USD 5,000","USD 5,001 – 25,000","USD 25,001 – 50,000","USD 50,001 – 100,000","USD 100,001 – 500,000","USD 500,001 – 1,000,000","Más de USD 1,000,000"];
+
+const EMP_INCOME_RANGES  = ["Menos de USD 50,000","USD 50,001 – 100,000","USD 100,001 – 250,000","USD 250,001 – 500,000","USD 500,001 – 1,000,000","USD 1,000,001 – 5,000,000","Más de USD 5,000,000"];
+const EMP_ASSETS_RANGES  = ["Menos de USD 50,000","USD 50,001 – 100,000","USD 100,001 – 500,000","USD 500,001 – 1,000,000","USD 1,000,001 – 5,000,000","USD 5,000,001 – 10,000,000","Más de USD 10,000,000"];
+const EMP_LIAB_RANGES    = ["Menos de USD 25,000","USD 25,001 – 100,000","USD 100,001 – 500,000","USD 500,001 – 1,000,000","USD 1,000,001 – 5,000,000","USD 5,000,001 – 10,000,000","Más de USD 10,000,000"];
+const EMP_NETWORTH_RANGES = ["Menos de USD 50,000","USD 50,001 – 100,000","USD 100,001 – 500,000","USD 500,001 – 1,000,000","USD 1,000,001 – 5,000,000","USD 5,000,001 – 10,000,000","Más de USD 10,000,000"];
+const EMP_VOLUME_RANGES  = ["Menos de USD 10,000","USD 10,001 – 50,000","USD 50,001 – 100,000","USD 100,001 – 500,000","USD 500,001 – 1,000,000","USD 1,000,001 – 5,000,000","Más de USD 5,000,000"];
+const EMP_TXCOUNT_RANGES = ["1 – 50","51 – 100","101 – 500","501 – 1,000","1,001 – 5,000","Más de 5,000"];
+const EMP_AVGTX_RANGES   = ["Menos de USD 500","USD 500 – 2,500","USD 2,501 – 10,000","USD 10,001 – 50,000","USD 50,001 – 100,000","USD 100,001 – 500,000","Más de USD 500,000"];
+const EMP_MAXTX_RANGES   = ["Menos de USD 10,000","USD 10,001 – 50,000","USD 50,001 – 100,000","USD 100,001 – 500,000","USD 500,001 – 1,000,000","USD 1,000,001 – 5,000,000","Más de USD 5,000,000"];
+
+const DOC_TYPES = ["Cédula (CC)", "Extranjería (CE)", "Pasaporte"];
+const SEX_OPTIONS = ["Masculino", "Femenino", "Otro"];
+const YES_NO = ["Sí", "No"];
 
 // ── Estilos base ──────────────────────────────────────────────────
 const IS: React.CSSProperties = {
@@ -129,6 +158,56 @@ function SecTitle({ text }: { text: string }) {
     </div>
   );
 }
+
+// ── Select genérico de opciones (rangos, listas fijas, etc.) ──────
+function OptSelect({ label, value, onChange, options, required, full, placeholder }: {
+  label: string; value: string; onChange: (v: string) => void; options: string[];
+  required?: boolean; full?: boolean; placeholder?: string;
+}) {
+  return (
+    <div style={{ gridColumn: full ? "1/-1" : undefined }}>
+      <label style={LS}>{label} {required && <span style={{color:"var(--accent)"}}>*</span>}</label>
+      <select value={value} onChange={e => onChange(e.target.value)} style={IS}>
+        <option value="">{placeholder ?? "Selecciona..."}</option>
+        {options.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+    </div>
+  );
+}
+
+// ── Bloque de declaraciones (checkboxes finales de cumplimiento) ──
+interface DeclDef { key: string; label: string; }
+function DeclChecklist({ defs, values, onToggle }: {
+  defs: DeclDef[]; values: Record<string, boolean>; onToggle: (k: string, v: boolean) => void;
+}) {
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:"8px", padding:"12px 0" }}>
+      {defs.map(d => (
+        <label key={d.key} style={{ display:"flex", alignItems:"flex-start", gap:"8px", fontSize:"12px", color:"var(--t2)", cursor:"pointer" }}>
+          <input type="checkbox" checked={!!values[d.key]} onChange={e => onToggle(d.key, e.target.checked)} style={{ marginTop:"2px", flexShrink:0 }} />
+          <span>{d.label}</span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
+const PN_DECL_DEFS: DeclDef[] = [
+  { key: "decl_truthful_info",     label: "Declaro que la información suministrada es veraz." },
+  { key: "decl_lawful_funds",      label: "Declaro que el origen de mis fondos es lícito." },
+  { key: "decl_data_processing",   label: "Autorizo el tratamiento de mis datos personales." },
+  { key: "decl_privacy_policy",    label: "Acepto la Política de Privacidad." },
+  { key: "decl_screening_consent", label: "Autorizo consultas en listas restrictivas y validaciones de cumplimiento." },
+];
+
+const EMP_DECL_DEFS: DeclDef[] = [
+  { key: "decl_truthful_info",      label: "Declaramos que la información suministrada es veraz." },
+  { key: "decl_lawful_funds",       label: "Declaramos que el origen de los fondos es lícito." },
+  { key: "decl_data_processing",    label: "Autorizamos el tratamiento de datos personales." },
+  { key: "decl_privacy_policy",     label: "Aceptamos la Política de Privacidad." },
+  { key: "decl_screening_consent",  label: "Autorizamos consultas en listas restrictivas y procesos de debida diligencia." },
+  { key: "decl_sarlaft_compliance", label: "Declaramos cumplir con las normas SARLAFT/SAGRILAFT (si aplica)." },
+];
 
 // ── GeoPicker que consume la API de Bepay ─────────────────────────
 interface GeoPickerProps {
@@ -278,11 +357,29 @@ export const OnboardingView: React.FC<Props> = ({ onToast }) => {
     expDepId:"", expMunId:"", expMunDane:"", expMunName:"",
     pn1:"", pn2:"", pa1:"", pa2:"",
     fechaNac:"",
+    nacionalidad:"Colombia", paisNac:"Colombia",
     nacDepId:"", nacMunId:"", nacMunDane:"", nacMunName:"",
-    email:"", cel:"", cel2:"",
+    sexo:"",
+    email:"", cel:"", cel2:"", telFijo:"",
+    paisRes:"Colombia",
     depResId:"", ciuResId:"", ciuResDane:"", ciuResName:"",
-    ocupacion:"", empresa:"", cargo:"", ingreso:"",
-    origenFondos:"",
+    direccion:"", codigoPostal:"",
+    ocupacion:"", profesion:"", actividadEconomica:"", empresa:"", cargo:"", tipoEmpleo:"",
+    ingreso:"",
+    paisResidenciaFiscal:"Colombia", tieneResidenciaFiscalOtroPais:"", tinFiscal:"", rutNumero:"",
+    regimenTributario:"", esResponsableIva:"",
+    egresosMensuales:"", patrimonio:"",
+    origenFondos:"", origenFondosOtro:"",
+    fuenteIngresos:"", fuenteIngresosOtro:"",
+    volumenMensual:"", numTransaccionesMensuales:"", valorPromedioTx:"", valorMaximoTx:"",
+    esPep:"", pepDetalle:"", esPepRelacionado:"",
+    bancoNombre:"", bancoTipoCuenta:"", bancoNumeroCuenta:"", bancoTitular:"",
+    bancoTitularTipoDoc:"", bancoTitularNumDoc:"", bancoPais:"Colombia", bancoMoneda:"COP",
+  });
+
+  const [pnDecls, setPnDecls] = useState<Record<string, boolean>>({
+    decl_truthful_info:false, decl_lawful_funds:false, decl_data_processing:false,
+    decl_privacy_policy:false, decl_screening_consent:false,
   });
 
   const [pnDocs, setPnDocs] = useState<Record<string, UploadState>>({
@@ -294,16 +391,35 @@ export const OnboardingView: React.FC<Props> = ({ onToast }) => {
 
   // ── Estado Empresa ────────────────────────────────────────────
   const [emp, setEmp] = useState({
-    razon:"", nit:"", tipoSoc:"", fechaConst:"",
+    razon:"", nombreComercial:"", nit:"", tipoSoc:"", fechaConst:"",
+    actEco:"", descripcionNegocio:"", paisConstitucion:"Colombia",
     depEmpId:"", ciuEmpId:"", ciuEmpDane:"", ciuEmpName:"",
-    email:"", tel:"", web:"",
-    actEco:"", origenFondos:"",
-    rlNombre:"", rlTipoDoc:"", rlNumDoc:"", rlFechaDoc:"",
+    direccion:"", codigoPostal:"", web:"", email:"", tel:"",
+    regimenTributario:"", esResponsableIva:"", esGranContribuyente:"", esAutorretenedor:"",
+    paisResidenciaFiscal:"Colombia", paisesDeclaraImpuestos:"",
+    rlPn1:"", rlPn2:"", rlPa1:"", rlPa2:"",
+    rlTipoDoc:"", rlNumDoc:"", rlFechaDoc:"",
     rlDepExpId:"", rlMunExpId:"", rlMunExpDane:"", rlMunExpName:"",
-    rlFechaNac:"",
+    rlFechaNac:"", rlNacionalidad:"Colombia", rlPaisNac:"Colombia",
     rlDepNacId:"", rlMunNacId:"", rlMunNacDane:"", rlMunNacName:"",
-    rlEmail:"", rlCel:"",
+    rlSexo:"", rlEmail:"", rlCel:"", rlDireccion:"", rlCargo:"", rlProfesion:"",
+    origenFondos:"",
+    ingresosAnuales:"", activos:"", pasivos:"", patrimonio:"",
+    volumenMensual:"", numTransacciones:"", valorPromedioTx:"", valorMaximoTx:"",
+    bancoNombre:"", bancoTipoCuenta:"", bancoNumeroCuenta:"", bancoTitular:"", bancoPais:"Colombia",
   });
+
+  const [empDecls, setEmpDecls] = useState<Record<string, boolean>>({
+    decl_truthful_info:false, decl_lawful_funds:false, decl_data_processing:false,
+    decl_privacy_policy:false, decl_screening_consent:false, decl_sarlaft_compliance:false,
+  });
+
+  interface UboRow { full_name:string; doc_type:string; doc_number:string; nationality:string; residence_country:string; ownership_pct:string; is_pep:string; funds_origin:string; }
+  const emptyUbo: UboRow = { full_name:"", doc_type:"", doc_number:"", nationality:"Colombia", residence_country:"Colombia", ownership_pct:"", is_pep:"", funds_origin:"" };
+  const [ubos, setUbos] = useState<UboRow[]>([{ ...emptyUbo }]);
+  const addUbo = () => setUbos(u => [...u, { ...emptyUbo }]);
+  const removeUbo = (i: number) => setUbos(u => u.filter((_, idx) => idx !== i));
+  const updateUbo = (i: number, k: keyof UboRow, v: string) => setUbos(u => u.map((row, idx) => idx === i ? { ...row, [k]: v } : row));
 
   const [empDocs, setEmpDocs] = useState<Record<string, UploadState>>({
     camCom:      { file:null, url:null, uploading:false, done:false },
@@ -320,7 +436,8 @@ export const OnboardingView: React.FC<Props> = ({ onToast }) => {
   const pd = (k: string) => (s: UploadState) => setPnDocs(p => ({ ...p, [k]: s }));
   const ed = (k: string) => (s: UploadState) => setEmpDocs(p => ({ ...p, [k]: s }));
 
-  const fullName = [pn.pn1, pn.pn2, pn.pa1, pn.pa2].filter(Boolean).join(" ");
+  const fullName   = [pn.pn1, pn.pn2, pn.pa1, pn.pa2].filter(Boolean).join(" ");
+  const rlFullName = [emp.rlPn1, emp.rlPn2, emp.rlPa1, emp.rlPa2].filter(Boolean).join(" ");
   const steps    = obType === "pn" ? PN_STEPS : EMP_STEPS;
 
   // ── Verificar estado existente ────────────────────────────────
@@ -402,18 +519,60 @@ useEffect(() => {
           res_dep:         pn.depResId,
           res_mun:         pn.ciuResName,
           res_dane:        pn.ciuResDane,
-          address:         `Ciudad DANE ${pn.ciuResDane}`,
+          address:         pn.direccion || `Ciudad DANE ${pn.ciuResDane}`,
           occupation:      pn.ocupacion,
           company:         pn.empresa,
           job_title:       pn.cargo,
           income_range:    pn.ingreso,
           funds_origin:    pn.origenFondos,
-          gender:          "Masculino",
+          gender:          pn.sexo || "Masculino",
           doc_front_url:   pnDocs.cedFront.url,
           doc_back_url:    pnDocs.cedBack.url,
           selfie_url:      pnDocs.selfie.url,
           funds_decl_url:  pnDocs.decOrigen.url,
           terms_accepted:  true,
+
+          // ── Campos KYC ampliados ─────────────────────────────
+          nationality:        pn.nacionalidad || undefined,
+          birth_country:      pn.paisNac || undefined,
+          sex:                pn.sexo || undefined,
+          residence_country:  pn.paisRes || undefined,
+          landline_phone:     pn.telFijo || undefined,
+          postal_code:        pn.codigoPostal || undefined,
+          profession:         pn.profesion || undefined,
+          economic_activity:  pn.actividadEconomica || undefined,
+          employment_type:    pn.tipoEmpleo || undefined,
+          tax_residence_country:     pn.paisResidenciaFiscal || undefined,
+          has_foreign_tax_residence: pn.tieneResidenciaFiscalOtroPais || undefined,
+          tax_id_tin:                pn.tinFiscal || undefined,
+          rut_number:                pn.rutNumero || undefined,
+          tax_regime:                pn.regimenTributario || undefined,
+          is_vat_responsible:        pn.esResponsableIva || undefined,
+          monthly_expenses_range: pn.egresosMensuales || undefined,
+          net_worth_range:        pn.patrimonio || undefined,
+          funds_origin_other:     pn.origenFondosOtro || undefined,
+          income_source:          pn.fuenteIngresos || undefined,
+          income_source_other:    pn.fuenteIngresosOtro || undefined,
+          monthly_volume_range:   pn.volumenMensual || undefined,
+          monthly_tx_count_range: pn.numTransaccionesMensuales || undefined,
+          avg_tx_value_range:     pn.valorPromedioTx || undefined,
+          max_tx_value_range:     pn.valorMaximoTx || undefined,
+          is_pep:          pn.esPep || undefined,
+          pep_details:     pn.pepDetalle || undefined,
+          is_pep_related:  pn.esPepRelacionado || undefined,
+          bank_name:              pn.bancoNombre || undefined,
+          bank_account_type:      pn.bancoTipoCuenta || undefined,
+          bank_account_number:    pn.bancoNumeroCuenta || undefined,
+          bank_account_holder:    pn.bancoTitular || undefined,
+          bank_holder_doc_type:   pn.bancoTitularTipoDoc || undefined,
+          bank_holder_doc_number: pn.bancoTitularNumDoc || undefined,
+          bank_country:           pn.bancoPais || undefined,
+          bank_currency:          pn.bancoMoneda || undefined,
+          decl_truthful_info:     pnDecls.decl_truthful_info,
+          decl_lawful_funds:      pnDecls.decl_lawful_funds,
+          decl_data_processing:   pnDecls.decl_data_processing,
+          decl_privacy_policy:    pnDecls.decl_privacy_policy,
+          decl_screening_consent: pnDecls.decl_screening_consent,
         });
       } else {
         res = await submitOnboardingEmp({
@@ -429,8 +588,8 @@ useEffect(() => {
           website:             emp.web,
           economic_activity:   emp.actEco,
           funds_origin:        emp.origenFondos,
-          rl_full_name:        emp.rlNombre,
-          rl_doc_type:         emp.rlTipoDoc === "Cédula (CC)" ? "CC" : "CE",
+          rl_full_name:        rlFullName,
+          rl_doc_type:         emp.rlTipoDoc === "Cédula (CC)" ? "CC" : emp.rlTipoDoc === "Pasaporte" ? "PAS" : "CE",
           rl_doc_number:       emp.rlNumDoc,
           rl_doc_issue_date:   emp.rlFechaDoc || undefined,
           rl_doc_issue_dep:    emp.rlDepExpId,
@@ -448,12 +607,65 @@ useEffect(() => {
           financial_states_url: empDocs.estados.url,
           shareholder_comp_url: empDocs.composicion.url,
           terms_accepted:       true,
+
+          // ── Campos KYB ampliados ─────────────────────────────
+          commercial_name:       emp.nombreComercial || undefined,
+          business_description:  emp.descripcionNegocio || undefined,
+          incorporation_country: emp.paisConstitucion || undefined,
+          address:                emp.direccion || undefined,
+          postal_code:            emp.codigoPostal || undefined,
+          tax_regime:            emp.regimenTributario || undefined,
+          is_vat_responsible:    emp.esResponsableIva || undefined,
+          is_gran_contribuyente: emp.esGranContribuyente || undefined,
+          is_autorretenedor:     emp.esAutorretenedor || undefined,
+          tax_residence_country: emp.paisResidenciaFiscal || undefined,
+          tax_countries:         emp.paisesDeclaraImpuestos || undefined,
+          rl_first_name:     emp.rlPn1 || undefined,
+          rl_middle_name:    emp.rlPn2 || undefined,
+          rl_first_surname:  emp.rlPa1 || undefined,
+          rl_middle_surname: emp.rlPa2 || undefined,
+          rl_nationality:    emp.rlNacionalidad || undefined,
+          rl_birth_country:  emp.rlPaisNac || undefined,
+          rl_sex:            emp.rlSexo || undefined,
+          rl_address:        emp.rlDireccion || undefined,
+          rl_position:       emp.rlCargo || undefined,
+          rl_profession:     emp.rlProfesion || undefined,
+          annual_income_range:    emp.ingresosAnuales || undefined,
+          assets_range:           emp.activos || undefined,
+          liabilities_range:      emp.pasivos || undefined,
+          net_worth_range:        emp.patrimonio || undefined,
+          monthly_volume_range:   emp.volumenMensual || undefined,
+          monthly_tx_count_range: emp.numTransacciones || undefined,
+          avg_tx_value_range:     emp.valorPromedioTx || undefined,
+          max_tx_value_range:     emp.valorMaximoTx || undefined,
+          bank_name:           emp.bancoNombre || undefined,
+          bank_account_type:   emp.bancoTipoCuenta || undefined,
+          bank_account_number: emp.bancoNumeroCuenta || undefined,
+          bank_account_holder: emp.bancoTitular || undefined,
+          bank_country:        emp.bancoPais || undefined,
+          decl_truthful_info:      empDecls.decl_truthful_info,
+          decl_lawful_funds:       empDecls.decl_lawful_funds,
+          decl_data_processing:    empDecls.decl_data_processing,
+          decl_privacy_policy:     empDecls.decl_privacy_policy,
+          decl_screening_consent:  empDecls.decl_screening_consent,
+          decl_sarlaft_compliance: empDecls.decl_sarlaft_compliance,
         });
       }
 
       if (res?.success === false) {
         onToast("error", "Error al enviar", res.error ?? "Inténtalo de nuevo");
         return;
+      }
+
+      // ── Guardar beneficiarios finales (UBO) — solo para empresas ─
+      if (obType === "emp" && res?.id) {
+        const validUbos = ubos.filter(u => u.full_name.trim());
+        if (validUbos.length > 0) {
+          const uboRes = await saveUbos(res.id, validUbos);
+          if (uboRes?.success === false) {
+            onToast("error", "Beneficiarios finales", uboRes.error ?? "No se pudieron guardar los beneficiarios finales");
+          }
+        }
       }
 
       const id = `OB-${new Date().getFullYear()}-${String(Math.floor(Math.random()*99999)).padStart(5,"0")}`;
@@ -483,7 +695,7 @@ useEffect(() => {
             <div><label style={LS}>Tipo de documento <span style={{color:"var(--accent)"}}>*</span> <RampTag /></label>
               <select value={pn.docType} onChange={e => pf("docType")(e.target.value)} style={IS}>
                 <option value="">Selecciona...</option>
-                <option>Cédula (CC)</option><option>Extranjería (CE)</option><option>Pasaporte</option>
+                {DOC_TYPES.map(o => <option key={o}>{o}</option>)}
               </select>
             </div>
             <div><label style={LS}>Número de documento <span style={{color:"var(--accent)"}}>*</span> <RampTag /></label>
@@ -518,7 +730,7 @@ useEffect(() => {
             </div>
             {fullName && (
               <div style={{ gridColumn:"1/-1" }}>
-                <label style={LS}>Nombre completo (generado automáticamente)</label>
+                <label style={LS}>Nombre completo (generado automáticamente — se usa como Nombre Comercial)</label>
                 <input value={fullName} readOnly style={{ ...IS, background:"var(--elevated)", color:"var(--t2)" }} />
               </div>
             )}
@@ -529,7 +741,9 @@ useEffect(() => {
             <div><label style={LS}>Fecha de nacimiento <span style={{color:"var(--accent)"}}>*</span> <RampTag /></label>
               <input type="date" value={pn.fechaNac} onChange={e => pf("fechaNac")(e.target.value)} style={IS} />
             </div>
-            <div />
+            <OptSelect label="Sexo" value={pn.sexo} onChange={pf("sexo")} options={SEX_OPTIONS} />
+            <OptSelect label="Nacionalidad" value={pn.nacionalidad} onChange={pf("nacionalidad")} options={COUNTRIES} />
+            <OptSelect label="País de nacimiento" value={pn.paisNac} onChange={pf("paisNac")} options={COUNTRIES} />
             <GeoPicker
               labelDep="Departamento nacimiento" labelCiu="Municipio nacimiento"
               depId={pn.nacDepId} ciuId={pn.nacMunId}
@@ -554,9 +768,14 @@ useEffect(() => {
             <div><label style={LS}>Celular alternativo</label>
               <input value={pn.cel2} onChange={e => pf("cel2")(e.target.value.replace(/\D/g,"").slice(0,10))} placeholder="Opcional" style={IS} />
             </div>
+            <div><label style={LS}>Teléfono fijo</label>
+              <input value={pn.telFijo} onChange={e => pf("telFijo")(e.target.value)} placeholder="Opcional" style={IS} />
+            </div>
           </div>
           <SecTitle text="Lugar de residencia" />
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px" }}>
+            <OptSelect label="País de residencia" value={pn.paisRes} onChange={pf("paisRes")} options={COUNTRIES} required />
+            <div />
             <GeoPicker
               labelDep="Departamento *" labelCiu="Ciudad *"
               depId={pn.depResId} ciuId={pn.ciuResId}
@@ -564,13 +783,19 @@ useEffect(() => {
               onCiu={(id, dane, name) => setPn(p => ({ ...p, ciuResId:id, ciuResDane:dane, ciuResName:name }))}
               hint regions={regions} getCitiesByRegion={getCitiesByRegion} geoLoading={geoLoading}
             />
+            <div style={{ gridColumn:"1/-1" }}><label style={LS}>Dirección</label>
+              <input value={pn.direccion} onChange={e => pf("direccion")(e.target.value)} placeholder="Calle, número, barrio" style={IS} />
+            </div>
+            <div><label style={LS}>Código postal</label>
+              <input value={pn.codigoPostal} onChange={e => pf("codigoPostal")(e.target.value)} placeholder="Opcional" style={IS} />
+            </div>
           </div>
         </>
       );
 
       case 2: return (
         <>
-          <SecTitle text="Actividad económica" />
+          <SecTitle text="Información laboral" />
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px" }}>
             <div><label style={LS}>Ocupación <span style={{color:"var(--accent)"}}>*</span></label>
               <select value={pn.ocupacion} onChange={e => pf("ocupacion")(e.target.value)} style={IS}>
@@ -580,33 +805,124 @@ useEffect(() => {
                 <option>Estudiante</option><option>Ama de casa</option><option>Otro</option>
               </select>
             </div>
-            <div><label style={LS}>Empresa / negocio</label>
+            <div><label style={LS}>Profesión</label>
+              <input value={pn.profesion} onChange={e => pf("profesion")(e.target.value)} placeholder="Ej. Contador, Ingeniero..." style={IS} />
+            </div>
+            <div><label style={LS}>Actividad económica</label>
+              <input value={pn.actividadEconomica} onChange={e => pf("actividadEconomica")(e.target.value)} placeholder="Ej. Comercio, servicios..." style={IS} />
+            </div>
+            <div><label style={LS}>Empresa / negocio (si aplica)</label>
               <input value={pn.empresa} onChange={e => pf("empresa")(e.target.value)} placeholder="Nombre de tu empresa" style={IS} />
             </div>
             <div><label style={LS}>Cargo</label>
               <input value={pn.cargo} onChange={e => pf("cargo")(e.target.value)} placeholder="Ej. Gerente, Asesor..." style={IS} />
             </div>
-            <div><label style={LS}>Rango de ingresos mensuales</label>
-              <select value={pn.ingreso} onChange={e => pf("ingreso")(e.target.value)} style={IS}>
+            <OptSelect label="¿Trabaja de manera independiente o dependiente?" value={pn.tipoEmpleo} onChange={pf("tipoEmpleo")} options={["Independiente","Dependiente"]} />
+          </div>
+
+          <SecTitle text="Información tributaria" />
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px" }}>
+            <OptSelect label="País de residencia fiscal" value={pn.paisResidenciaFiscal} onChange={pf("paisResidenciaFiscal")} options={COUNTRIES} />
+            <OptSelect label="¿Tiene residencia fiscal en otro país?" value={pn.tieneResidenciaFiscalOtroPais} onChange={pf("tieneResidenciaFiscalOtroPais")} options={YES_NO} />
+            <div><label style={LS}>Número de Identificación Tributaria (TIN)</label>
+              <input value={pn.tinFiscal} onChange={e => pf("tinFiscal")(e.target.value)} placeholder="Si aplica" style={IS} />
+            </div>
+            <div><label style={LS}>RUT</label>
+              <input value={pn.rutNumero} onChange={e => pf("rutNumero")(e.target.value)} placeholder="Si aplica" style={IS} />
+            </div>
+            <div><label style={LS}>Régimen tributario</label>
+              <input value={pn.regimenTributario} onChange={e => pf("regimenTributario")(e.target.value)} placeholder="Ej. Régimen simple, ordinario..." style={IS} />
+            </div>
+            <OptSelect label="¿Es responsable de IVA?" value={pn.esResponsableIva} onChange={pf("esResponsableIva")} options={YES_NO} />
+          </div>
+        </>
+      );
+
+      case 3: return (
+        <>
+          <SecTitle text="Ingresos y egresos" />
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px" }}>
+            <OptSelect label="Ingresos mensuales" value={pn.ingreso} onChange={pf("ingreso")} options={PN_INCOME_RANGES} />
+            <OptSelect label="Egresos mensuales" value={pn.egresosMensuales} onChange={pf("egresosMensuales")} options={PN_EXPENSE_RANGES} />
+            <OptSelect label="Patrimonio" value={pn.patrimonio} onChange={pf("patrimonio")} options={PN_NETWORTH_RANGES} />
+          </div>
+
+          <SecTitle text="Origen y fuente de fondos" />
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px" }}>
+            <OptSelect label="Origen de los fondos" value={pn.origenFondos} onChange={pf("origenFondos")} options={PN_FUNDS_ORIGIN} required />
+            {pn.origenFondos === "Otro" && (
+              <div><label style={LS}>Especifique origen de fondos</label>
+                <input value={pn.origenFondosOtro} onChange={e => pf("origenFondosOtro")(e.target.value)} style={IS} />
+              </div>
+            )}
+            <OptSelect label="Fuente principal de ingresos" value={pn.fuenteIngresos} onChange={pf("fuenteIngresos")} options={PN_INCOME_SOURCE} />
+            {pn.fuenteIngresos === "Otro" && (
+              <div><label style={LS}>Especifique fuente de ingresos</label>
+                <input value={pn.fuenteIngresosOtro} onChange={e => pf("fuenteIngresosOtro")(e.target.value)} style={IS} />
+              </div>
+            )}
+          </div>
+
+          <SecTitle text="Perfil transaccional esperado" />
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px" }}>
+            <OptSelect label="Volumen mensual estimado" value={pn.volumenMensual} onChange={pf("volumenMensual")} options={PN_VOLUME_RANGES} />
+            <OptSelect label="Número estimado de transacciones mensuales" value={pn.numTransaccionesMensuales} onChange={pf("numTransaccionesMensuales")} options={PN_TXCOUNT_RANGES} />
+            <OptSelect label="Valor promedio por transacción" value={pn.valorPromedioTx} onChange={pf("valorPromedioTx")} options={PN_AVGTX_RANGES} />
+            <OptSelect label="Valor máximo esperado por transacción" value={pn.valorMaximoTx} onChange={pf("valorMaximoTx")} options={PN_MAXTX_RANGES} />
+          </div>
+        </>
+      );
+
+      case 4: return (
+        <>
+          <SecTitle text="Información de cumplimiento" />
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px" }}>
+            <OptSelect label="¿Es usted una Persona Expuesta Políticamente (PEP)?" value={pn.esPep} onChange={pf("esPep")} options={YES_NO} />
+            {pn.esPep === "Sí" && (
+              <div style={{ gridColumn:"1/-1" }}><label style={LS}>Indique el cargo, la entidad y el período en el que ejerció funciones</label>
+                <input value={pn.pepDetalle} onChange={e => pf("pepDetalle")(e.target.value)} style={IS} />
+              </div>
+            )}
+            <OptSelect label="¿Es familiar o asociado cercano de un PEP?" value={pn.esPepRelacionado} onChange={pf("esPepRelacionado")} options={YES_NO} />
+          </div>
+
+          <SecTitle text="Información bancaria" />
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px" }}>
+            <div><label style={LS}>Banco</label>
+              <input value={pn.bancoNombre} onChange={e => pf("bancoNombre")(e.target.value)} style={IS} />
+            </div>
+            <div><label style={LS}>Tipo de cuenta</label>
+              <select value={pn.bancoTipoCuenta} onChange={e => pf("bancoTipoCuenta")(e.target.value)} style={IS}>
                 <option value="">Selecciona...</option>
-                <option>Menos de $1.000.000</option><option>$1.000.000 – $3.000.000</option>
-                <option>$3.000.001 – $8.000.000</option><option>Más de $8.000.000</option>
+                <option>Ahorros</option><option>Corriente</option>
               </select>
             </div>
-            <div style={{ gridColumn:"1/-1" }}>
-              <label style={LS}>Origen de fondos <span style={{color:"var(--accent)"}}>*</span></label>
-              <select value={pn.origenFondos} onChange={e => pf("origenFondos")(e.target.value)} style={IS}>
+            <div><label style={LS}>Número de cuenta</label>
+              <input value={pn.bancoNumeroCuenta} onChange={e => pf("bancoNumeroCuenta")(e.target.value)} style={IS} />
+            </div>
+            <div><label style={LS}>Titular de la cuenta</label>
+              <input value={pn.bancoTitular} onChange={e => pf("bancoTitular")(e.target.value)} style={IS} />
+            </div>
+            <div><label style={LS}>Tipo de documento del titular</label>
+              <select value={pn.bancoTitularTipoDoc} onChange={e => pf("bancoTitularTipoDoc")(e.target.value)} style={IS}>
                 <option value="">Selecciona...</option>
-                <option>Salario / Nómina</option><option>Actividad comercial</option>
-                <option>Remesas</option><option>Ahorros</option>
-                <option>Inversiones</option><option>Pensión</option><option>Otro</option>
+                {DOC_TYPES.map(o => <option key={o}>{o}</option>)}
+              </select>
+            </div>
+            <div><label style={LS}>Número de documento del titular</label>
+              <input value={pn.bancoTitularNumDoc} onChange={e => pf("bancoTitularNumDoc")(e.target.value)} style={IS} />
+            </div>
+            <OptSelect label="País de la cuenta" value={pn.bancoPais} onChange={pf("bancoPais")} options={COUNTRIES} />
+            <div><label style={LS}>Moneda</label>
+              <select value={pn.bancoMoneda} onChange={e => pf("bancoMoneda")(e.target.value)} style={IS}>
+                <option>COP</option><option>USD</option><option>EUR</option>
               </select>
             </div>
           </div>
         </>
       );
 
-      case 3: return (
+      case 5: return (
         <>
           <SecTitle text="Documentos requeridos" />
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px" }}>
@@ -615,9 +931,11 @@ useEffect(() => {
             <UploadZone label="Selfie con documento"           hint="Foto sosteniendo tu cédula"  icon="ti-camera"  state={pnDocs.selfie}    onChange={pd("selfie")} />
             <UploadZone label="Declaración de origen de fondos" hint="PDF firmado"                 icon="ti-writing" state={pnDocs.decOrigen} onChange={pd("decOrigen")} />
           </div>
+          <SecTitle text="Declaraciones" />
+          <DeclChecklist defs={PN_DECL_DEFS} values={pnDecls} onToggle={(k, v) => setPnDecls(p => ({ ...p, [k]: v }))} />
           <div style={{ display:"flex", alignItems:"flex-start", gap:"8px", padding:"12px 0", fontSize:"12px", color:"var(--t2)" }}>
             <input type="checkbox" checked={termsAccepted} onChange={e => setTermsAccepted(e.target.checked)} style={{ marginTop:"2px", flexShrink:0 }} />
-            <span>Declaro que la información suministrada y los documentos adjuntos son verídicos y autorizo a Ramplix para verificar los datos con fines de vinculación.</span>
+            <span>Acepto los Términos y Condiciones, y autorizo a Ramplix para verificar los datos suministrados con fines de vinculación.</span>
           </div>
         </>
       );
@@ -636,6 +954,9 @@ useEffect(() => {
             <div style={{ gridColumn:"1/-1" }}><label style={LS}>Razón social <span style={{color:"var(--accent)"}}>*</span></label>
               <input value={emp.razon} onChange={e => ef("razon")(e.target.value)} placeholder="Nombre legal de la empresa" style={IS} />
             </div>
+            <div><label style={LS}>Nombre comercial</label>
+              <input value={emp.nombreComercial} onChange={e => ef("nombreComercial")(e.target.value)} placeholder="Opcional" style={IS} />
+            </div>
             <div><label style={LS}>NIT <span style={{color:"var(--accent)"}}>*</span></label>
               <input value={emp.nit} onChange={e => ef("nit")(e.target.value)} placeholder="900.123.456-7" style={IS} />
             </div>
@@ -649,6 +970,13 @@ useEffect(() => {
             <div><label style={LS}>Fecha de constitución</label>
               <input type="date" value={emp.fechaConst} onChange={e => ef("fechaConst")(e.target.value)} style={IS} />
             </div>
+            <div style={{ gridColumn:"1/-1" }}><label style={LS}>Actividad económica (CIIU) <span style={{color:"var(--accent)"}}>*</span></label>
+              <input value={emp.actEco} onChange={e => ef("actEco")(e.target.value)} placeholder="Ej. Comercio electrónico, cambio de divisas..." style={IS} />
+            </div>
+            <div style={{ gridColumn:"1/-1" }}><label style={LS}>Descripción del negocio</label>
+              <input value={emp.descripcionNegocio} onChange={e => ef("descripcionNegocio")(e.target.value)} placeholder="Breve descripción de la actividad" style={IS} />
+            </div>
+            <OptSelect label="País de constitución" value={emp.paisConstitucion} onChange={ef("paisConstitucion")} options={COUNTRIES} />
             <div />
             <GeoPicker
               labelDep="Departamento *" labelCiu="Ciudad *"
@@ -657,6 +985,12 @@ useEffect(() => {
               onCiu={(id, dane, name) => setEmp(p => ({ ...p, ciuEmpId:id, ciuEmpDane:dane, ciuEmpName:name }))}
               hint regions={regions} getCitiesByRegion={getCitiesByRegion} geoLoading={geoLoading}
             />
+            <div style={{ gridColumn:"1/-1" }}><label style={LS}>Dirección</label>
+              <input value={emp.direccion} onChange={e => ef("direccion")(e.target.value)} placeholder="Calle, número, barrio" style={IS} />
+            </div>
+            <div><label style={LS}>Código postal</label>
+              <input value={emp.codigoPostal} onChange={e => ef("codigoPostal")(e.target.value)} placeholder="Opcional" style={IS} />
+            </div>
             <div><label style={LS}>Correo corporativo <span style={{color:"var(--accent)"}}>*</span></label>
               <input type="email" value={emp.email} onChange={e => ef("email")(e.target.value)} placeholder="contacto@empresa.com" style={IS} />
             </div>
@@ -672,12 +1006,24 @@ useEffect(() => {
 
       case 1: return (
         <>
-          <SecTitle text="Actividad económica" />
+          <SecTitle text="Información tributaria" />
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px" }}>
-            <div style={{ gridColumn:"1/-1" }}><label style={LS}>Actividad económica principal <span style={{color:"var(--accent)"}}>*</span></label>
-              <input value={emp.actEco} onChange={e => ef("actEco")(e.target.value)} placeholder="Ej. Comercio electrónico, cambio de divisas..." style={IS} />
+            <div><label style={LS}>Régimen tributario</label>
+              <input value={emp.regimenTributario} onChange={e => ef("regimenTributario")(e.target.value)} placeholder="Ej. Régimen ordinario, simple..." style={IS} />
             </div>
-            <div style={{ gridColumn:"1/-1" }}><label style={LS}>Origen de fondos <span style={{color:"var(--accent)"}}>*</span></label>
+            <OptSelect label="¿Es responsable de IVA?" value={emp.esResponsableIva} onChange={ef("esResponsableIva")} options={YES_NO} />
+            <OptSelect label="¿Es gran contribuyente?" value={emp.esGranContribuyente} onChange={ef("esGranContribuyente")} options={YES_NO} />
+            <OptSelect label="¿Es autorretenedor?" value={emp.esAutorretenedor} onChange={ef("esAutorretenedor")} options={YES_NO} />
+            <OptSelect label="País de residencia fiscal" value={emp.paisResidenciaFiscal} onChange={ef("paisResidenciaFiscal")} options={COUNTRIES} />
+            <div><label style={LS}>Países donde declara impuestos</label>
+              <input value={emp.paisesDeclaraImpuestos} onChange={e => ef("paisesDeclaraImpuestos")(e.target.value)} placeholder="Ej. Colombia, Estados Unidos" style={IS} />
+            </div>
+          </div>
+
+          <SecTitle text="Origen de fondos de la empresa" />
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px" }}>
+            <div style={{ gridColumn:"1/-1" }}>
+              <label style={LS}>Origen de fondos <span style={{color:"var(--accent)"}}>*</span></label>
               <select value={emp.origenFondos} onChange={e => ef("origenFondos")(e.target.value)} style={IS}>
                 <option value="">Selecciona...</option>
                 <option>Ingresos operacionales</option><option>Ventas de productos/servicios</option>
@@ -692,13 +1038,28 @@ useEffect(() => {
         <>
           <SecTitle text="Datos del Representante Legal" />
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px" }}>
-            <div style={{ gridColumn:"1/-1" }}><label style={LS}>Nombre completo del RL <span style={{color:"var(--accent)"}}>*</span></label>
-              <input value={emp.rlNombre} onChange={e => ef("rlNombre")(e.target.value)} placeholder="Nombre y apellidos" style={IS} />
+            <div><label style={LS}>Primer nombre <span style={{color:"var(--accent)"}}>*</span></label>
+              <input value={emp.rlPn1} onChange={e => ef("rlPn1")(e.target.value)} style={IS} />
             </div>
+            <div><label style={LS}>Segundo nombre</label>
+              <input value={emp.rlPn2} onChange={e => ef("rlPn2")(e.target.value)} placeholder="Opcional" style={IS} />
+            </div>
+            <div><label style={LS}>Primer apellido <span style={{color:"var(--accent)"}}>*</span></label>
+              <input value={emp.rlPa1} onChange={e => ef("rlPa1")(e.target.value)} style={IS} />
+            </div>
+            <div><label style={LS}>Segundo apellido</label>
+              <input value={emp.rlPa2} onChange={e => ef("rlPa2")(e.target.value)} placeholder="Opcional" style={IS} />
+            </div>
+            {rlFullName && (
+              <div style={{ gridColumn:"1/-1" }}>
+                <label style={LS}>Nombre completo (generado automáticamente)</label>
+                <input value={rlFullName} readOnly style={{ ...IS, background:"var(--elevated)", color:"var(--t2)" }} />
+              </div>
+            )}
             <div><label style={LS}>Tipo de documento <span style={{color:"var(--accent)"}}>*</span></label>
               <select value={emp.rlTipoDoc} onChange={e => ef("rlTipoDoc")(e.target.value)} style={IS}>
                 <option value="">Selecciona...</option>
-                <option>Cédula (CC)</option><option>Extranjería (CE)</option><option>Pasaporte</option>
+                {DOC_TYPES.map(o => <option key={o}>{o}</option>)}
               </select>
             </div>
             <div><label style={LS}>Número de documento <span style={{color:"var(--accent)"}}>*</span></label>
@@ -718,7 +1079,9 @@ useEffect(() => {
             <div><label style={LS}>Fecha de nacimiento <span style={{color:"var(--accent)"}}>*</span></label>
               <input type="date" value={emp.rlFechaNac} onChange={e => ef("rlFechaNac")(e.target.value)} style={IS} />
             </div>
-            <div />
+            <OptSelect label="Sexo" value={emp.rlSexo} onChange={ef("rlSexo")} options={SEX_OPTIONS} />
+            <OptSelect label="Nacionalidad" value={emp.rlNacionalidad} onChange={ef("rlNacionalidad")} options={COUNTRIES} />
+            <OptSelect label="País de nacimiento" value={emp.rlPaisNac} onChange={ef("rlPaisNac")} options={COUNTRIES} />
             <GeoPicker
               labelDep="Departamento nacimiento" labelCiu="Municipio nacimiento"
               depId={emp.rlDepNacId} ciuId={emp.rlMunNacId}
@@ -732,11 +1095,103 @@ useEffect(() => {
             <div><label style={LS}>Celular del RL</label>
               <input value={emp.rlCel} onChange={e => ef("rlCel")(e.target.value.replace(/\D/g,"").slice(0,10))} placeholder="300 000 0000" style={IS} />
             </div>
+            <div style={{ gridColumn:"1/-1" }}><label style={LS}>Dirección del RL</label>
+              <input value={emp.rlDireccion} onChange={e => ef("rlDireccion")(e.target.value)} style={IS} />
+            </div>
+            <div><label style={LS}>Cargo</label>
+              <input value={emp.rlCargo} onChange={e => ef("rlCargo")(e.target.value)} placeholder="Ej. Representante Legal, Gerente..." style={IS} />
+            </div>
+            <div><label style={LS}>Profesión</label>
+              <input value={emp.rlProfesion} onChange={e => ef("rlProfesion")(e.target.value)} style={IS} />
+            </div>
           </div>
         </>
       );
 
       case 3: return (
+        <>
+          <SecTitle text="Información financiera" />
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px" }}>
+            <OptSelect label="Ingresos anuales" value={emp.ingresosAnuales} onChange={ef("ingresosAnuales")} options={EMP_INCOME_RANGES} />
+            <OptSelect label="Activos" value={emp.activos} onChange={ef("activos")} options={EMP_ASSETS_RANGES} />
+            <OptSelect label="Pasivos" value={emp.pasivos} onChange={ef("pasivos")} options={EMP_LIAB_RANGES} />
+            <OptSelect label="Patrimonio" value={emp.patrimonio} onChange={ef("patrimonio")} options={EMP_NETWORTH_RANGES} />
+            <OptSelect label="Volumen mensual esperado" value={emp.volumenMensual} onChange={ef("volumenMensual")} options={EMP_VOLUME_RANGES} />
+            <OptSelect label="Número estimado de transacciones" value={emp.numTransacciones} onChange={ef("numTransacciones")} options={EMP_TXCOUNT_RANGES} />
+            <OptSelect label="Valor promedio por transacción" value={emp.valorPromedioTx} onChange={ef("valorPromedioTx")} options={EMP_AVGTX_RANGES} />
+            <OptSelect label="Valor máximo esperado" value={emp.valorMaximoTx} onChange={ef("valorMaximoTx")} options={EMP_MAXTX_RANGES} />
+          </div>
+
+          <SecTitle text="Información bancaria" />
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px" }}>
+            <div><label style={LS}>Banco</label>
+              <input value={emp.bancoNombre} onChange={e => ef("bancoNombre")(e.target.value)} style={IS} />
+            </div>
+            <div><label style={LS}>Tipo de cuenta</label>
+              <select value={emp.bancoTipoCuenta} onChange={e => ef("bancoTipoCuenta")(e.target.value)} style={IS}>
+                <option value="">Selecciona...</option>
+                <option>Ahorros</option><option>Corriente</option>
+              </select>
+            </div>
+            <div><label style={LS}>Número de cuenta</label>
+              <input value={emp.bancoNumeroCuenta} onChange={e => ef("bancoNumeroCuenta")(e.target.value)} style={IS} />
+            </div>
+            <div><label style={LS}>Titular</label>
+              <input value={emp.bancoTitular} onChange={e => ef("bancoTitular")(e.target.value)} style={IS} />
+            </div>
+            <OptSelect label="País" value={emp.bancoPais} onChange={ef("bancoPais")} options={COUNTRIES} />
+          </div>
+        </>
+      );
+
+      case 4: return (
+        <>
+          <SecTitle text="Accionistas y beneficiarios finales (UBO)" />
+          <div style={{ fontSize:"12px", color:"var(--t3)", marginBottom:"14px" }}>
+            Agrega cada persona con participación accionaria o control sobre la empresa.
+          </div>
+          {ubos.map((u, i) => (
+            <div key={i} style={{ border:"1px solid var(--border)", borderRadius:"var(--radius-sm)", padding:"16px", marginBottom:"14px", position:"relative" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"10px" }}>
+                <span style={{ fontSize:"12px", fontWeight:700, color:"var(--t2)" }}>Beneficiario #{i + 1}</span>
+                {ubos.length > 1 && (
+                  <button type="button" onClick={() => removeUbo(i)}
+                    style={{ display:"inline-flex", alignItems:"center", gap:"4px", padding:"3px 9px", border:"1px solid var(--error)", borderRadius:"var(--radius-sm)", background:"transparent", color:"var(--error)", fontSize:"11px", cursor:"pointer" }}>
+                    <i className="ti ti-trash" />Eliminar
+                  </button>
+                )}
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px" }}>
+                <div style={{ gridColumn:"1/-1" }}><label style={LS}>Nombre completo <span style={{color:"var(--accent)"}}>*</span></label>
+                  <input value={u.full_name} onChange={e => updateUbo(i, "full_name", e.target.value)} style={IS} />
+                </div>
+                <div><label style={LS}>Tipo de documento</label>
+                  <select value={u.doc_type} onChange={e => updateUbo(i, "doc_type", e.target.value)} style={IS}>
+                    <option value="">Selecciona...</option>
+                    {DOC_TYPES.map(o => <option key={o}>{o}</option>)}
+                  </select>
+                </div>
+                <div><label style={LS}>Número de documento</label>
+                  <input value={u.doc_number} onChange={e => updateUbo(i, "doc_number", e.target.value)} style={IS} />
+                </div>
+                <OptSelect label="Nacionalidad" value={u.nationality} onChange={v => updateUbo(i, "nationality", v)} options={COUNTRIES} />
+                <OptSelect label="País de residencia" value={u.residence_country} onChange={v => updateUbo(i, "residence_country", v)} options={COUNTRIES} />
+                <div><label style={LS}>Participación accionaria (%)</label>
+                  <input type="number" min={0} max={100} value={u.ownership_pct} onChange={e => updateUbo(i, "ownership_pct", e.target.value)} style={IS} />
+                </div>
+                <OptSelect label="¿Es Persona Expuesta Políticamente (PEP)?" value={u.is_pep} onChange={v => updateUbo(i, "is_pep", v)} options={YES_NO} />
+                <OptSelect label="Origen de los fondos" value={u.funds_origin} onChange={v => updateUbo(i, "funds_origin", v)} options={PN_FUNDS_ORIGIN} />
+              </div>
+            </div>
+          ))}
+          <button type="button" onClick={addUbo}
+            style={{ display:"inline-flex", alignItems:"center", gap:"6px", padding:"8px 14px", border:"1px dashed var(--border-strong)", borderRadius:"var(--radius-sm)", background:"var(--elevated)", color:"var(--t2)", fontSize:"12px", fontWeight:600, cursor:"pointer" }}>
+            <i className="ti ti-plus" />Agregar beneficiario
+          </button>
+        </>
+      );
+
+      case 5: return (
         <>
           <SecTitle text="Documentos requeridos" />
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px" }}>
@@ -748,9 +1203,11 @@ useEffect(() => {
             <UploadZone label="Estados financieros"             hint="Balance general y resultados último año" icon="ti-chart-bar" state={empDocs.estados}     onChange={ed("estados")} />
             <UploadZone label="Composición accionaria"          hint="Listado de socios con % de participación" icon="ti-users"   state={empDocs.composicion} onChange={ed("composicion")} span />
           </div>
+          <SecTitle text="Declaraciones" />
+          <DeclChecklist defs={EMP_DECL_DEFS} values={empDecls} onToggle={(k, v) => setEmpDecls(p => ({ ...p, [k]: v }))} />
           <div style={{ display:"flex", alignItems:"flex-start", gap:"8px", padding:"12px 0", fontSize:"12px", color:"var(--t2)" }}>
             <input type="checkbox" checked={termsAccepted} onChange={e => setTermsAccepted(e.target.checked)} style={{ marginTop:"2px", flexShrink:0 }} />
-            <span>Declaro que la información suministrada y los documentos adjuntos son verídicos y autorizo a Ramplix para verificar los datos con fines de vinculación.</span>
+            <span>Aceptamos los Términos y Condiciones, y autorizamos a Ramplix para verificar los datos suministrados con fines de vinculación.</span>
           </div>
         </>
       );

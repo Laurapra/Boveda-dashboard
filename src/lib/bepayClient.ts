@@ -147,6 +147,12 @@ export async function getOnboardingStatus() {
   return callOnboarding("get_status", {});
 }
 
+// Beneficiarios finales / accionistas (UBO) — reemplaza la lista completa
+// de una empresa cada vez que se llama.
+export async function saveUbos(onboardingEmpId: string, beneficiaries: object[]) {
+  return callOnboarding("save_ubos", { onboarding_emp_id: onboardingEmpId, beneficiaries });
+}
+
 export async function getOnboardingUploadUrl(docType: string, ext = "jpg") {
   return callOnboarding("get_upload_url", { doc_type: docType, ext });
 }
