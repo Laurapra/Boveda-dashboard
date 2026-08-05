@@ -1,7 +1,10 @@
 // src/pages/Onboarding.tsx
 import React, { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
-import { submitOnboardingPN, submitOnboardingEmp, getOnboardingStatus, saveUbos } from "../lib/bepayClient";
+import {
+  submitOnboardingPN, submitOnboardingEmp, getOnboardingStatus, saveUbos,
+  getCountries, getDocumentTypes, getBanks, getCiiuCodes,
+} from "../lib/bepayClient";
 import type { ToastType } from "../types";
 
 interface Props {
@@ -103,6 +106,68 @@ function useGeo() {
   return { regions, cities, getCitiesByRegion, loading };
 }
 
+// ── Catálogos de Bepay (países, tipos de documento, bancos, CIIU) ──
+// Se piden una sola vez al montar el formulario. El backend (bepay-charges)
+// ya cachea cada catálogo 24h en la tabla geo_cache, así que estas llamadas
+// son baratas incluso si el usuario recarga el formulario varias veces.
+interface CatalogItem { value: string; label: string; }
+
+// Las respuestas reales de Bepay no siempre usan los mismos nombres de
+// campo entre catálogos — se extrae de forma defensiva en vez de asumir
+// una sola forma, para no romper el formulario si un catálogo cambia.
+function toCatalogItems(raw: unknown, kind: "country" | "docType" | "bank" | "ciiu"): CatalogItem[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((item): CatalogItem | null => {
+    if (!item || typeof item !== "object") return null;
+    const r = item as Record<string, unknown>;
+    if (kind === "country") {
+      const label = String(r.name ?? r.nombre ?? "");
+      return label ? { value: label, label } : null;
+    }
+    if (kind === "docType") {
+      const value = String(r.short_name ?? r.code ?? r.id ?? "");
+      const label = String(r.name ?? r.nombre ?? value);
+      return value ? { value, label: `${label}${r.short_name ? ` (${r.short_name})` : ""}` } : null;
+    }
+    if (kind === "bank") {
+      const label = String(r.name ?? r.nombre ?? r.bank_name ?? "");
+      return label ? { value: label, label } : null;
+    }
+    // ciiu
+    const code  = String(r.code ?? r.ciiu_code ?? r.codigo ?? r.id ?? "");
+    const label = String(r.name ?? r.description ?? r.descripcion ?? r.nombre ?? code);
+    return code ? { value: code, label: `${code} — ${label}` } : null;
+  }).filter((x): x is CatalogItem => x !== null);
+}
+
+function useCatalogs() {
+  const [countries, setCountries]         = useState<CatalogItem[]>([]);
+  const [documentTypes, setDocumentTypes] = useState<CatalogItem[]>([]);
+  const [banks, setBanks]                 = useState<CatalogItem[]>([]);
+  const [ciiuCodes, setCiiuCodes]         = useState<CatalogItem[]>([]);
+  const [loading, setLoading]             = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.resolve().then(async () => {
+      const results = await Promise.allSettled([
+        getCountries(), getDocumentTypes(), getBanks(200), getCiiuCodes(500),
+      ]);
+      if (cancelled) return;
+
+      const [cRes, dRes, bRes, ciRes] = results;
+      if (cRes.status === "fulfilled" && cRes.value?.success) setCountries(toCatalogItems(cRes.value.data, "country"));
+      if (dRes.status === "fulfilled" && dRes.value?.success) setDocumentTypes(toCatalogItems(dRes.value.data, "docType"));
+      if (bRes.status === "fulfilled" && bRes.value?.success) setBanks(toCatalogItems(bRes.value.data, "bank"));
+      if (ciRes.status === "fulfilled" && ciRes.value?.success) setCiiuCodes(toCatalogItems(ciRes.value.data, "ciiu"));
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  return { countries, documentTypes, banks, ciiuCodes, loading };
+}
+
 // ── Tipos ─────────────────────────────────────────────────────────
 type ObType  = "" | "pn" | "emp";
 type ObStage = "checking" | "tipo" | "form" | "success";
@@ -135,9 +200,20 @@ const EMP_TXCOUNT_RANGES = ["1 – 50","51 – 100","101 – 500","501 – 1,000
 const EMP_AVGTX_RANGES   = ["Menos de USD 500","USD 500 – 2,500","USD 2,501 – 10,000","USD 10,001 – 50,000","USD 50,001 – 100,000","USD 100,001 – 500,000","Más de USD 500,000"];
 const EMP_MAXTX_RANGES   = ["Menos de USD 10,000","USD 10,001 – 50,000","USD 50,001 – 100,000","USD 100,001 – 500,000","USD 500,001 – 1,000,000","USD 1,000,001 – 5,000,000","Más de USD 5,000,000"];
 
-const DOC_TYPES = ["Cédula (CC)", "Extranjería (CE)", "Pasaporte"];
 const SEX_OPTIONS = ["Masculino", "Femenino", "Otro"];
 const YES_NO = ["Sí", "No"];
+
+// Listas usadas mientras cargan los catálogos reales de Bepay, o si la
+// llamada falla — así el formulario nunca queda bloqueado sin opciones.
+const toItems = (arr: string[]) => arr.map(s => ({ value: s, label: s }));
+const COUNTRY_FALLBACK = toItems(COUNTRIES);
+const DOC_TYPE_FALLBACK = [
+  { value: "CC",  label: "Cédula de ciudadanía (CC)" },
+  { value: "CE",  label: "Cédula de extranjería (CE)" },
+  { value: "PAS", label: "Pasaporte (PAS)" },
+  { value: "TI",  label: "Tarjeta de identidad (TI)" },
+  { value: "NIT", label: "NIT" },
+];
 
 // ── Estilos base ──────────────────────────────────────────────────
 const IS: React.CSSProperties = {
@@ -171,6 +247,50 @@ function OptSelect({ label, value, onChange, options, required, full, placeholde
         <option value="">{placeholder ?? "Selecciona..."}</option>
         {options.map(o => <option key={o} value={o}>{o}</option>)}
       </select>
+    </div>
+  );
+}
+
+// ── Select respaldado por un catálogo real de Bepay (países, tipos de
+// documento...), con lista de respaldo mientras carga o si falla ────
+function CatalogSelect({ label, value, onChange, items, fallback, loading, required, full }: {
+  label: string; value: string; onChange: (v: string) => void;
+  items: CatalogItem[]; fallback: CatalogItem[]; loading: boolean;
+  required?: boolean; full?: boolean;
+}) {
+  const opts = items.length > 0 ? items : fallback;
+  const stillLoading = loading && items.length === 0;
+  return (
+    <div style={{ gridColumn: full ? "1/-1" : undefined }}>
+      <label style={LS}>{label} {required && <span style={{color:"var(--accent)"}}>*</span>}</label>
+      <select value={value} onChange={e => onChange(e.target.value)} style={IS} disabled={stillLoading}>
+        <option value="">{stillLoading ? "Cargando…" : "Selecciona..."}</option>
+        {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
+  );
+}
+
+// ── Input con sugerencias de un catálogo (bancos, CIIU) — permite
+// escribir libremente si el catálogo no trae la opción exacta ──────
+function CatalogInput({ label, value, onChange, items, loading, placeholder, required, full, listId }: {
+  label: string; value: string; onChange: (v: string) => void;
+  items: CatalogItem[]; loading: boolean; placeholder?: string;
+  required?: boolean; full?: boolean; listId: string;
+}) {
+  return (
+    <div style={{ gridColumn: full ? "1/-1" : undefined }}>
+      <label style={LS}>{label} {required && <span style={{color:"var(--accent)"}}>*</span>}</label>
+      <input
+        list={listId}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={loading && items.length === 0 ? "Cargando…" : (placeholder ?? "Escribe o selecciona...")}
+        style={IS}
+      />
+      <datalist id={listId}>
+        {items.map(o => <option key={o.value} value={o.label} />)}
+      </datalist>
     </div>
   );
 }
@@ -293,8 +413,8 @@ function UploadZone({ label, hint, icon, state, onChange, span }: {
           .upload(path, file, { contentType: file.type, upsert: true });
         if (error) throw new Error(error.message);
         onChange({ file, url: path, uploading: false, done: true });
-      } catch (err: any) {
-        alert(`Error al subir: ${err.message}`);
+      } catch (err: unknown) {
+        alert(`Error al subir: ${err instanceof Error ? err.message : String(err)}`);
         onChange({ file: null, url: null, uploading: false, done: false });
       }
     };
@@ -350,6 +470,7 @@ export const OnboardingView: React.FC<Props> = ({ onToast }) => {
 
   // Geografía desde Bepay
   const { regions, getCitiesByRegion, loading: geoLoading } = useGeo();
+  const catalogs = useCatalogs();
 
   // ── Estado PN ─────────────────────────────────────────────────
   const [pn, setPn] = useState({
@@ -500,7 +621,7 @@ useEffect(() => {
       let res;
       if (obType === "pn") {
         res = await submitOnboardingPN({
-          doc_type:        pn.docType === "Cédula (CC)" ? "CC" : pn.docType === "Extranjería (CE)" ? "CE" : "PAS",
+          doc_type:        pn.docType || "CC",
           doc_number:      pn.docNum,
           doc_issue_date:  pn.docFecha,
           doc_issue_dep:   pn.expDepId,
@@ -589,7 +710,7 @@ useEffect(() => {
           economic_activity:   emp.actEco,
           funds_origin:        emp.origenFondos,
           rl_full_name:        rlFullName,
-          rl_doc_type:         emp.rlTipoDoc === "Cédula (CC)" ? "CC" : emp.rlTipoDoc === "Pasaporte" ? "PAS" : "CE",
+          rl_doc_type:         emp.rlTipoDoc || "CC",
           rl_doc_number:       emp.rlNumDoc,
           rl_doc_issue_date:   emp.rlFechaDoc || undefined,
           rl_doc_issue_dep:    emp.rlDepExpId,
@@ -692,12 +813,8 @@ useEffect(() => {
         <>
           <SecTitle text="Identificación" />
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px" }}>
-            <div><label style={LS}>Tipo de documento <span style={{color:"var(--accent)"}}>*</span> <RampTag /></label>
-              <select value={pn.docType} onChange={e => pf("docType")(e.target.value)} style={IS}>
-                <option value="">Selecciona...</option>
-                {DOC_TYPES.map(o => <option key={o}>{o}</option>)}
-              </select>
-            </div>
+            <CatalogSelect label="Tipo de documento" value={pn.docType} onChange={pf("docType")}
+              items={catalogs.documentTypes} fallback={DOC_TYPE_FALLBACK} loading={catalogs.loading} required />
             <div><label style={LS}>Número de documento <span style={{color:"var(--accent)"}}>*</span> <RampTag /></label>
               <input value={pn.docNum} onChange={e => pf("docNum")(e.target.value)} placeholder="Ej. 1023456789" style={IS} />
             </div>
@@ -742,8 +859,8 @@ useEffect(() => {
               <input type="date" value={pn.fechaNac} onChange={e => pf("fechaNac")(e.target.value)} style={IS} />
             </div>
             <OptSelect label="Sexo" value={pn.sexo} onChange={pf("sexo")} options={SEX_OPTIONS} />
-            <OptSelect label="Nacionalidad" value={pn.nacionalidad} onChange={pf("nacionalidad")} options={COUNTRIES} />
-            <OptSelect label="País de nacimiento" value={pn.paisNac} onChange={pf("paisNac")} options={COUNTRIES} />
+            <CatalogSelect label="Nacionalidad" value={pn.nacionalidad} onChange={pf("nacionalidad")} items={catalogs.countries} fallback={COUNTRY_FALLBACK} loading={catalogs.loading} />
+            <CatalogSelect label="País de nacimiento" value={pn.paisNac} onChange={pf("paisNac")} items={catalogs.countries} fallback={COUNTRY_FALLBACK} loading={catalogs.loading} />
             <GeoPicker
               labelDep="Departamento nacimiento" labelCiu="Municipio nacimiento"
               depId={pn.nacDepId} ciuId={pn.nacMunId}
@@ -774,7 +891,7 @@ useEffect(() => {
           </div>
           <SecTitle text="Lugar de residencia" />
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px" }}>
-            <OptSelect label="País de residencia" value={pn.paisRes} onChange={pf("paisRes")} options={COUNTRIES} required />
+            <CatalogSelect label="País de residencia" value={pn.paisRes} onChange={pf("paisRes")} items={catalogs.countries} fallback={COUNTRY_FALLBACK} loading={catalogs.loading} required />
             <div />
             <GeoPicker
               labelDep="Departamento *" labelCiu="Ciudad *"
@@ -822,7 +939,7 @@ useEffect(() => {
 
           <SecTitle text="Información tributaria" />
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px" }}>
-            <OptSelect label="País de residencia fiscal" value={pn.paisResidenciaFiscal} onChange={pf("paisResidenciaFiscal")} options={COUNTRIES} />
+            <CatalogSelect label="País de residencia fiscal" value={pn.paisResidenciaFiscal} onChange={pf("paisResidenciaFiscal")} items={catalogs.countries} fallback={COUNTRY_FALLBACK} loading={catalogs.loading} />
             <OptSelect label="¿Tiene residencia fiscal en otro país?" value={pn.tieneResidenciaFiscalOtroPais} onChange={pf("tieneResidenciaFiscalOtroPais")} options={YES_NO} />
             <div><label style={LS}>Número de Identificación Tributaria (TIN)</label>
               <input value={pn.tinFiscal} onChange={e => pf("tinFiscal")(e.target.value)} placeholder="Si aplica" style={IS} />
@@ -888,9 +1005,7 @@ useEffect(() => {
 
           <SecTitle text="Información bancaria" />
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px" }}>
-            <div><label style={LS}>Banco</label>
-              <input value={pn.bancoNombre} onChange={e => pf("bancoNombre")(e.target.value)} style={IS} />
-            </div>
+            <CatalogInput label="Banco" value={pn.bancoNombre} onChange={pf("bancoNombre")} items={catalogs.banks} loading={catalogs.loading} listId="banks-pn" />
             <div><label style={LS}>Tipo de cuenta</label>
               <select value={pn.bancoTipoCuenta} onChange={e => pf("bancoTipoCuenta")(e.target.value)} style={IS}>
                 <option value="">Selecciona...</option>
@@ -903,16 +1018,12 @@ useEffect(() => {
             <div><label style={LS}>Titular de la cuenta</label>
               <input value={pn.bancoTitular} onChange={e => pf("bancoTitular")(e.target.value)} style={IS} />
             </div>
-            <div><label style={LS}>Tipo de documento del titular</label>
-              <select value={pn.bancoTitularTipoDoc} onChange={e => pf("bancoTitularTipoDoc")(e.target.value)} style={IS}>
-                <option value="">Selecciona...</option>
-                {DOC_TYPES.map(o => <option key={o}>{o}</option>)}
-              </select>
-            </div>
+            <CatalogSelect label="Tipo de documento del titular" value={pn.bancoTitularTipoDoc} onChange={pf("bancoTitularTipoDoc")}
+              items={catalogs.documentTypes} fallback={DOC_TYPE_FALLBACK} loading={catalogs.loading} />
             <div><label style={LS}>Número de documento del titular</label>
               <input value={pn.bancoTitularNumDoc} onChange={e => pf("bancoTitularNumDoc")(e.target.value)} style={IS} />
             </div>
-            <OptSelect label="País de la cuenta" value={pn.bancoPais} onChange={pf("bancoPais")} options={COUNTRIES} />
+            <CatalogSelect label="País de la cuenta" value={pn.bancoPais} onChange={pf("bancoPais")} items={catalogs.countries} fallback={COUNTRY_FALLBACK} loading={catalogs.loading} />
             <div><label style={LS}>Moneda</label>
               <select value={pn.bancoMoneda} onChange={e => pf("bancoMoneda")(e.target.value)} style={IS}>
                 <option>COP</option><option>USD</option><option>EUR</option>
@@ -970,13 +1081,13 @@ useEffect(() => {
             <div><label style={LS}>Fecha de constitución</label>
               <input type="date" value={emp.fechaConst} onChange={e => ef("fechaConst")(e.target.value)} style={IS} />
             </div>
-            <div style={{ gridColumn:"1/-1" }}><label style={LS}>Actividad económica (CIIU) <span style={{color:"var(--accent)"}}>*</span></label>
-              <input value={emp.actEco} onChange={e => ef("actEco")(e.target.value)} placeholder="Ej. Comercio electrónico, cambio de divisas..." style={IS} />
-            </div>
+            <CatalogInput label="Actividad económica (CIIU)" value={emp.actEco} onChange={ef("actEco")}
+              items={catalogs.ciiuCodes} loading={catalogs.loading} listId="ciiu-codes"
+              placeholder="Busca por código o nombre de actividad" required full />
             <div style={{ gridColumn:"1/-1" }}><label style={LS}>Descripción del negocio</label>
               <input value={emp.descripcionNegocio} onChange={e => ef("descripcionNegocio")(e.target.value)} placeholder="Breve descripción de la actividad" style={IS} />
             </div>
-            <OptSelect label="País de constitución" value={emp.paisConstitucion} onChange={ef("paisConstitucion")} options={COUNTRIES} />
+            <CatalogSelect label="País de constitución" value={emp.paisConstitucion} onChange={ef("paisConstitucion")} items={catalogs.countries} fallback={COUNTRY_FALLBACK} loading={catalogs.loading} />
             <div />
             <GeoPicker
               labelDep="Departamento *" labelCiu="Ciudad *"
@@ -1014,7 +1125,7 @@ useEffect(() => {
             <OptSelect label="¿Es responsable de IVA?" value={emp.esResponsableIva} onChange={ef("esResponsableIva")} options={YES_NO} />
             <OptSelect label="¿Es gran contribuyente?" value={emp.esGranContribuyente} onChange={ef("esGranContribuyente")} options={YES_NO} />
             <OptSelect label="¿Es autorretenedor?" value={emp.esAutorretenedor} onChange={ef("esAutorretenedor")} options={YES_NO} />
-            <OptSelect label="País de residencia fiscal" value={emp.paisResidenciaFiscal} onChange={ef("paisResidenciaFiscal")} options={COUNTRIES} />
+            <CatalogSelect label="País de residencia fiscal" value={emp.paisResidenciaFiscal} onChange={ef("paisResidenciaFiscal")} items={catalogs.countries} fallback={COUNTRY_FALLBACK} loading={catalogs.loading} />
             <div><label style={LS}>Países donde declara impuestos</label>
               <input value={emp.paisesDeclaraImpuestos} onChange={e => ef("paisesDeclaraImpuestos")(e.target.value)} placeholder="Ej. Colombia, Estados Unidos" style={IS} />
             </div>
@@ -1056,12 +1167,8 @@ useEffect(() => {
                 <input value={rlFullName} readOnly style={{ ...IS, background:"var(--elevated)", color:"var(--t2)" }} />
               </div>
             )}
-            <div><label style={LS}>Tipo de documento <span style={{color:"var(--accent)"}}>*</span></label>
-              <select value={emp.rlTipoDoc} onChange={e => ef("rlTipoDoc")(e.target.value)} style={IS}>
-                <option value="">Selecciona...</option>
-                {DOC_TYPES.map(o => <option key={o}>{o}</option>)}
-              </select>
-            </div>
+            <CatalogSelect label="Tipo de documento" value={emp.rlTipoDoc} onChange={ef("rlTipoDoc")}
+              items={catalogs.documentTypes} fallback={DOC_TYPE_FALLBACK} loading={catalogs.loading} required />
             <div><label style={LS}>Número de documento <span style={{color:"var(--accent)"}}>*</span></label>
               <input value={emp.rlNumDoc} onChange={e => ef("rlNumDoc")(e.target.value)} placeholder="Ej. 1023456789" style={IS} />
             </div>
@@ -1080,8 +1187,8 @@ useEffect(() => {
               <input type="date" value={emp.rlFechaNac} onChange={e => ef("rlFechaNac")(e.target.value)} style={IS} />
             </div>
             <OptSelect label="Sexo" value={emp.rlSexo} onChange={ef("rlSexo")} options={SEX_OPTIONS} />
-            <OptSelect label="Nacionalidad" value={emp.rlNacionalidad} onChange={ef("rlNacionalidad")} options={COUNTRIES} />
-            <OptSelect label="País de nacimiento" value={emp.rlPaisNac} onChange={ef("rlPaisNac")} options={COUNTRIES} />
+            <CatalogSelect label="Nacionalidad" value={emp.rlNacionalidad} onChange={ef("rlNacionalidad")} items={catalogs.countries} fallback={COUNTRY_FALLBACK} loading={catalogs.loading} />
+            <CatalogSelect label="País de nacimiento" value={emp.rlPaisNac} onChange={ef("rlPaisNac")} items={catalogs.countries} fallback={COUNTRY_FALLBACK} loading={catalogs.loading} />
             <GeoPicker
               labelDep="Departamento nacimiento" labelCiu="Municipio nacimiento"
               depId={emp.rlDepNacId} ciuId={emp.rlMunNacId}
@@ -1124,9 +1231,7 @@ useEffect(() => {
 
           <SecTitle text="Información bancaria" />
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px" }}>
-            <div><label style={LS}>Banco</label>
-              <input value={emp.bancoNombre} onChange={e => ef("bancoNombre")(e.target.value)} style={IS} />
-            </div>
+            <CatalogInput label="Banco" value={emp.bancoNombre} onChange={ef("bancoNombre")} items={catalogs.banks} loading={catalogs.loading} listId="banks-emp" />
             <div><label style={LS}>Tipo de cuenta</label>
               <select value={emp.bancoTipoCuenta} onChange={e => ef("bancoTipoCuenta")(e.target.value)} style={IS}>
                 <option value="">Selecciona...</option>
@@ -1139,7 +1244,7 @@ useEffect(() => {
             <div><label style={LS}>Titular</label>
               <input value={emp.bancoTitular} onChange={e => ef("bancoTitular")(e.target.value)} style={IS} />
             </div>
-            <OptSelect label="País" value={emp.bancoPais} onChange={ef("bancoPais")} options={COUNTRIES} />
+            <CatalogSelect label="País" value={emp.bancoPais} onChange={ef("bancoPais")} items={catalogs.countries} fallback={COUNTRY_FALLBACK} loading={catalogs.loading} />
           </div>
         </>
       );
@@ -1165,17 +1270,13 @@ useEffect(() => {
                 <div style={{ gridColumn:"1/-1" }}><label style={LS}>Nombre completo <span style={{color:"var(--accent)"}}>*</span></label>
                   <input value={u.full_name} onChange={e => updateUbo(i, "full_name", e.target.value)} style={IS} />
                 </div>
-                <div><label style={LS}>Tipo de documento</label>
-                  <select value={u.doc_type} onChange={e => updateUbo(i, "doc_type", e.target.value)} style={IS}>
-                    <option value="">Selecciona...</option>
-                    {DOC_TYPES.map(o => <option key={o}>{o}</option>)}
-                  </select>
-                </div>
+                <CatalogSelect label="Tipo de documento" value={u.doc_type} onChange={v => updateUbo(i, "doc_type", v)}
+                  items={catalogs.documentTypes} fallback={DOC_TYPE_FALLBACK} loading={catalogs.loading} />
                 <div><label style={LS}>Número de documento</label>
                   <input value={u.doc_number} onChange={e => updateUbo(i, "doc_number", e.target.value)} style={IS} />
                 </div>
-                <OptSelect label="Nacionalidad" value={u.nationality} onChange={v => updateUbo(i, "nationality", v)} options={COUNTRIES} />
-                <OptSelect label="País de residencia" value={u.residence_country} onChange={v => updateUbo(i, "residence_country", v)} options={COUNTRIES} />
+                <CatalogSelect label="Nacionalidad" value={u.nationality} onChange={v => updateUbo(i, "nationality", v)} items={catalogs.countries} fallback={COUNTRY_FALLBACK} loading={catalogs.loading} />
+                <CatalogSelect label="País de residencia" value={u.residence_country} onChange={v => updateUbo(i, "residence_country", v)} items={catalogs.countries} fallback={COUNTRY_FALLBACK} loading={catalogs.loading} />
                 <div><label style={LS}>Participación accionaria (%)</label>
                   <input type="number" min={0} max={100} value={u.ownership_pct} onChange={e => updateUbo(i, "ownership_pct", e.target.value)} style={IS} />
                 </div>

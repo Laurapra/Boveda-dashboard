@@ -193,7 +193,11 @@ export async function checkBrebKey(keyValue: string) {
 export async function getAllVirtualKeys() {
   return callBepay("bepay-charges", "get_all_virtual_keys", {});
 }
-// ── Catálogos de Bepay (tipos doc, bancos, CIIU) ──────────────────
+// ── Catálogos de Bepay (países, tipos doc, bancos, CIIU) ───────────
+export async function getCountries() {
+  return callBepay("bepay-charges", "get_countries", {});
+}
+
 export async function getDocumentTypes() {
   return callBepay("bepay-charges", "get_document_types", {});
 }
