@@ -51,7 +51,7 @@ const NAV: NavItem[] = [
     icon: Ico(<path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4" strokeLinecap="round" strokeLinejoin="round" />),
   },
   {
-    key: "cuentas", label: "Cuentas",
+    key: "cuentas", label: "Beneficiarios",
     icon: Ico(<><circle cx="9" cy="7" r="3" /><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" strokeLinecap="round" /><path d="M16 11c1.7 0 3 1.3 3 3s-1.3 3-3 3" strokeLinecap="round" /><path d="M19 20c1.7-.5 3-2 3-4" strokeLinecap="round" /></>),
   },
   {

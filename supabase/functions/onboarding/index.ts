@@ -139,6 +139,14 @@ serve(async (req) => {
           decl_data_processing:   p.decl_data_processing ?? null,
           decl_privacy_policy:    p.decl_privacy_policy ?? null,
           decl_screening_consent: p.decl_screening_consent ?? null,
+
+          // ── Documentos (URLs en el bucket onboarding-docs) ──────────────
+          doc_front_url:                     p.doc_front_url ?? null,
+          doc_back_url:                      p.doc_back_url ?? null,
+          selfie_url:                        p.selfie_url ?? null,
+          bank_certificate_url:              p.bank_certificate_url ?? null,
+          bank_statement_or_tax_return_url:  p.bank_statement_or_tax_return_url ?? null,
+          funds_decl_url:                    p.funds_decl_url ?? null,
         }, { onConflict: "user_id" }).select().single();
 
         if (error) throw new Error(error.message);
@@ -253,6 +261,15 @@ serve(async (req) => {
           decl_privacy_policy:     p.decl_privacy_policy ?? null,
           decl_screening_consent:  p.decl_screening_consent ?? null,
           decl_sarlaft_compliance: p.decl_sarlaft_compliance ?? null,
+
+          // ── Documentos (URLs en el bucket onboarding-docs) ──────────────
+          chamber_commerce_url: p.chamber_commerce_url ?? null,
+          rut_url:              p.rut_url ?? null,
+          rl_doc_front_url:     p.rl_doc_front_url ?? null,
+          rl_doc_back_url:      p.rl_doc_back_url ?? null,
+          funds_decl_url:       p.funds_decl_url ?? null,
+          financial_states_url: p.financial_states_url ?? null,
+          shareholder_comp_url: p.shareholder_comp_url ?? null,
         }, { onConflict: "user_id" }).select().single();
 
         if (error) throw new Error(error.message);

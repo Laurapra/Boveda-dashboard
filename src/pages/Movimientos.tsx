@@ -167,7 +167,7 @@ export const MovimientosView: React.FC<Props> = ({ fmt, onToast }) => {
     const ob = pnRes.data || empRes.data;
 
     if (!ob) {
-      setBlocked("Debes completar el Onboarding Bre-B antes de dispersar.");
+      setBlocked("Debes completar el Onboarding antes de dispersar.");
     } else if (ob.status !== "approved") {
       if (ob.status === "pending") setBlocked("Tu onboarding está pendiente de aprobación.");
       else if (ob.status === "in_review") setBlocked("Tu onboarding está en revisión.");

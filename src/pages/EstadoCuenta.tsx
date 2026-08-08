@@ -17,12 +17,53 @@ interface TxRow {
   concept: string;
   status: string;
   ben_name: string | null;
+  payer_name: string | null;
+  bank_name: string | null;
+  account_type: string | null;
+  payment_method: string | null;
   comision_total: number | null;
   created_at: string;
 }
 
 // Exportar datos para Reportes
 export type { TxRow as EstadoTxRow };
+
+// Nombre a mostrar según el tipo de movimiento: quién te pagó (cobro) o a
+// quién le enviaste (dispersión) — mismo criterio que en Mis billeteras.
+function counterpartyName(t: TxRow): string | null {
+  return t.type === "charge" ? t.payer_name : t.ben_name;
+}
+
+// Concepto automático según el producto — mismo criterio que en Mis billeteras
+// (clasificación por palabras clave sobre payment_method/concept, con
+// fallback genérico razonable para valores no reconocidos).
+function conceptLabel(t: TxRow): string {
+  if (t.type === "payout") {
+    return t.account_type === "Bre-B" ? "Dispersión Bre-B" : "Dispersión ACH";
+  }
+
+  const raw = `${t.payment_method ?? ""} ${t.concept ?? ""}`.toUpperCase();
+  const isQr = raw.includes("QR");
+  const isStatic = raw.includes("STATIC") || raw.includes("ESTATIC") || raw.includes("ESTÁTIC");
+
+  if (raw.includes("NEQUI")) return "Recaudo Nequi Push";
+  if (isQr && isStatic) return "Recaudo QR Estático Bre-B";
+  if (isQr) return "Recaudo QR dinámico Bre-B";
+  if (raw.includes("BREB") || raw.includes("BRE-B") || raw.includes("MOVII")) return "Recaudo llave Bre-B";
+  if (t.payment_method) {
+    const method = t.payment_method.toLowerCase();
+    return "Recaudo " + method.charAt(0).toUpperCase() + method.slice(1);
+  }
+  return "Recaudo";
+}
+
+// Mismo agrupamiento que statusLabel() para filtrar — "completado" cubre
+// APPROVED/COMPLETED, "pendiente" cubre PENDING, todo lo demás es "rechazado".
+function statusGroup(s: string): "completed" | "pending" | "rejected" {
+  if (s === "APPROVED" || s === "COMPLETED") return "completed";
+  if (s === "PENDING") return "pending";
+  return "rejected";
+}
 
 export const EstadoCuentaView: React.FC<Props> = ({ fmt, onToast }) => {
   const { user }  = useAuthStore();
@@ -34,6 +75,7 @@ export const EstadoCuentaView: React.FC<Props> = ({ fmt, onToast }) => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   });
+  const [statusFilter, setStatusFilter] = useState<"all" | "completed" | "pending" | "rejected">("all");
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -43,7 +85,7 @@ export const EstadoCuentaView: React.FC<Props> = ({ fmt, onToast }) => {
 
     let q = supabase
       .from("bepay_transactions")
-      .select("id, bepay_ide, type, amount, concept, status, ben_name, comision_total, created_at")
+      .select("id, bepay_ide, type, amount, concept, status, ben_name, payer_name, bank_name, account_type, payment_method, comision_total, created_at")
       .gte("created_at", desde)
       .lt("created_at", hasta)
       .order("created_at", { ascending: false });
@@ -75,6 +117,8 @@ export const EstadoCuentaView: React.FC<Props> = ({ fmt, onToast }) => {
   const dispersado  = completadas.filter(t => t.type === "payout").reduce((s, t) => s + t.amount, 0);
   const comisiones  = completadas.reduce((s, t) => s + (t.comision_total ?? 0), 0);
   const neto        = recibido - dispersado - comisiones;
+
+  const filteredTxns = txns.filter((t) => statusFilter === "all" || statusGroup(t.status) === statusFilter);
 
   // ── Exportar PDF ─────────────────────────────────────────────
   const handleExportPDF = async () => {
@@ -134,29 +178,35 @@ export const EstadoCuentaView: React.FC<Props> = ({ fmt, onToast }) => {
       // ── Tabla ──
       autoTable(doc, {
         startY: 70,
-        head: [["Fecha", "Tipo", "Concepto", "Monto", "Comisión", "Estado"]],
-        body: txns.map(t => [
+        head: [["Fecha", "IDE", "Tipo", "Concepto", "De / Para", "Banco", "Monto", "Comisión", "Estado"]],
+        body: filteredTxns.map(t => [
           new Date(t.created_at).toLocaleDateString("es-CO", { day:"2-digit", month:"short", year:"numeric" }),
+          t.bepay_ide ?? "—",
           t.type === "charge" ? "Cobro" : "Dispersión",
-          t.ben_name ?? t.concept ?? "—",
+          conceptLabel(t),
+          counterpartyName(t) ?? "—",
+          t.bank_name ?? "—",
           (t.type === "charge" ? "+" : "-") + fmt(t.amount),
           t.comision_total ? fmt(t.comision_total) : "—",
           t.status === "APPROVED" || t.status === "COMPLETED" ? "Completado"
             : t.status === "PENDING" ? "Pendiente" : "Rechazado",
         ]),
-        styles: { fontSize: 8, cellPadding: 3 },
-        headStyles: { fillColor: [26, 26, 24], textColor: [255, 255, 255], fontSize: 8, fontStyle: "bold" },
+        styles: { fontSize: 7, cellPadding: 2.5 },
+        headStyles: { fillColor: [26, 26, 24], textColor: [255, 255, 255], fontSize: 7, fontStyle: "bold" },
         alternateRowStyles: { fillColor: [250, 249, 247] },
         columnStyles: {
-          0: { cellWidth: 28 },
-          1: { cellWidth: 24 },
-          2: { cellWidth: 80 },
-          3: { cellWidth: 30, halign: "right" },
-          4: { cellWidth: 26, halign: "right" },
-          5: { cellWidth: 24 },
+          0: { cellWidth: 22 },
+          1: { cellWidth: 22 },
+          2: { cellWidth: 20 },
+          3: { cellWidth: 42 },
+          4: { cellWidth: 40 },
+          5: { cellWidth: 28 },
+          6: { cellWidth: 26, halign: "right" },
+          7: { cellWidth: 24, halign: "right" },
+          8: { cellWidth: 22 },
         },
         didDrawCell: (data: any) => {
-          if (data.section === "body" && data.column.index === 5) {
+          if (data.section === "body" && data.column.index === 8) {
             const val = String(data.cell.text[0]);
             if (val === "Completado") doc.setTextColor(15, 110, 86);
             else if (val === "Pendiente") doc.setTextColor(133, 79, 11);
@@ -164,7 +214,7 @@ export const EstadoCuentaView: React.FC<Props> = ({ fmt, onToast }) => {
           }
         },
         didParseCell: (data: any) => {
-          if (data.section === "body" && data.column.index === 3) {
+          if (data.section === "body" && data.column.index === 6) {
             const val = String(data.cell.text[0]);
             data.cell.styles.textColor = val.startsWith("+") ? [15, 110, 86] : [163, 45, 45];
             data.cell.styles.fontStyle = "bold";
@@ -227,6 +277,18 @@ export const EstadoCuentaView: React.FC<Props> = ({ fmt, onToast }) => {
             onChange={(e) => setMes(e.target.value)}
             style={{ padding: "8px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--surface)", color: "var(--t1)", fontSize: "13px", outline: "none" }}
           />
+          <select
+            id="estado-status-filter"
+            name="estado-status-filter"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as "all" | "completed" | "pending" | "rejected")}
+            style={{ padding: "8px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--surface)", color: "var(--t1)", fontSize: "13px", outline: "none" }}
+          >
+            <option value="all">Todos los estados</option>
+            <option value="completed">Completado</option>
+            <option value="pending">Pendiente</option>
+            <option value="rejected">Rechazado</option>
+          </select>
           <button onClick={load} style={{ padding: "9px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--surface)", color: "var(--t2)", cursor: "pointer" }}>
             <i className="ti ti-refresh" />
           </button>
@@ -257,7 +319,7 @@ export const EstadoCuentaView: React.FC<Props> = ({ fmt, onToast }) => {
       <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", boxShadow: "var(--shadow)" }}>
         <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <h3 style={{ fontSize: "14.5px", fontWeight: 600, color: "var(--t1)" }}>Movimientos</h3>
-          <span style={{ fontSize: "12px", color: "var(--t3)" }}>{txns.length} registros</span>
+          <span style={{ fontSize: "12px", color: "var(--t3)" }}>{filteredTxns.length} registros</span>
         </div>
         {loading ? (
           <div style={{ padding: "48px", textAlign: "center", color: "var(--t3)" }}>
@@ -265,7 +327,7 @@ export const EstadoCuentaView: React.FC<Props> = ({ fmt, onToast }) => {
               <path d="M12 2a10 10 0 0110 10" strokeLinecap="round" />
             </svg>
           </div>
-        ) : txns.length === 0 ? (
+        ) : filteredTxns.length === 0 ? (
           <div style={{ padding: "48px", textAlign: "center", color: "var(--t3)" }}>Sin movimientos en este período</div>
         ) : (
           <div style={{ overflowX: "auto" }}>
@@ -273,15 +335,18 @@ export const EstadoCuentaView: React.FC<Props> = ({ fmt, onToast }) => {
               <thead>
                 <tr>
                   <th style={th}>Fecha</th>
+                  <th style={th}>IDE</th>
                   <th style={th}>Tipo</th>
-                  <th style={th}>Concepto / Beneficiario</th>
+                  <th style={th}>Concepto</th>
+                  <th style={th}>De / Para</th>
+                  <th style={th}>Banco</th>
                   <th style={{ ...th, textAlign: "right" }}>Monto</th>
                   <th style={{ ...th, textAlign: "right" }}>Comisión</th>
                   <th style={th}>Estado</th>
                 </tr>
               </thead>
               <tbody>
-                {txns.map((row) => (
+                {filteredTxns.map((row) => (
                   <tr key={row.id}
                     onMouseEnter={(e) => (e.currentTarget.style.background = "var(--elevated)")}
                     onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
@@ -295,14 +360,23 @@ export const EstadoCuentaView: React.FC<Props> = ({ fmt, onToast }) => {
                         {new Date(row.created_at).toLocaleTimeString("es-CO", { hour:"2-digit", minute:"2-digit" })}
                       </div>
                     </td>
+                    <td style={{ ...td, fontSize: "12px", color: "var(--t3)", fontFamily: "var(--mono)" }}>
+                      {row.bepay_ide ?? "—"}
+                    </td>
                     <td style={td}>
                       <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "3px 8px", borderRadius: "7px", fontSize: "11px", fontWeight: 600, background: row.type === "charge" ? "var(--success-dim)" : "var(--error-dim)", color: row.type === "charge" ? "var(--success)" : "var(--error)" }}>
                         <i className={`ti ${row.type === "charge" ? "ti-arrow-down-right" : "ti-arrow-up-right"}`} style={{ fontSize: "12px" }} />
                         {row.type === "charge" ? "Cobro" : "Dispersión"}
                       </span>
                     </td>
-                    <td style={{ ...td, fontWeight: 500, color: "var(--t1)", maxWidth: "280px", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {row.ben_name ?? row.concept ?? "—"}
+                    <td style={{ ...td, fontWeight: 500, color: "var(--t1)" }}>
+                      {conceptLabel(row)}
+                    </td>
+                    <td style={{ ...td, color: "var(--t1)", maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {counterpartyName(row) ?? "—"}
+                    </td>
+                    <td style={{ ...td, color: "var(--t2)", fontSize: "12px" }}>
+                      {row.bank_name ?? "—"}
                     </td>
                     <td style={{ ...td, textAlign: "right", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: row.type === "charge" ? "var(--success)" : "var(--error)" }}>
                       {row.type === "charge" ? "+" : "-"}{fmt(row.amount)}

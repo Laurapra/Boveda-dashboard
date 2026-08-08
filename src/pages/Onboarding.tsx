@@ -450,14 +450,6 @@ function UploadZone({ label, hint, icon, state, onChange, span }: {
   );
 }
 
-function RampTag() {
-  return (
-    <span style={{ display:"inline-flex", alignItems:"center", padding:"1px 5px", borderRadius:"4px", fontSize:"9px", fontWeight:600, background:"var(--accent-dim)", color:"var(--accent)", marginLeft:"4px", verticalAlign:"middle" }}>
-      ⚡Ramplix
-    </span>
-  );
-}
-
 // ── Componente principal ──────────────────────────────────────────
 export const OnboardingView: React.FC<Props> = ({ onToast }) => {
   const [stage,  setStage]  = useState<ObStage>("checking");
@@ -504,10 +496,12 @@ export const OnboardingView: React.FC<Props> = ({ onToast }) => {
   });
 
   const [pnDocs, setPnDocs] = useState<Record<string, UploadState>>({
-    cedFront:  { file:null, url:null, uploading:false, done:false },
-    cedBack:   { file:null, url:null, uploading:false, done:false },
-    selfie:    { file:null, url:null, uploading:false, done:false },
-    decOrigen: { file:null, url:null, uploading:false, done:false },
+    cedFront:    { file:null, url:null, uploading:false, done:false },
+    cedBack:     { file:null, url:null, uploading:false, done:false },
+    selfie:      { file:null, url:null, uploading:false, done:false },
+    bankCert:    { file:null, url:null, uploading:false, done:false },
+    incomeProof: { file:null, url:null, uploading:false, done:false },
+    decOrigen:   { file:null, url:null, uploading:false, done:false },
   });
 
   // ── Estado Empresa ────────────────────────────────────────────
@@ -650,6 +644,8 @@ useEffect(() => {
           doc_front_url:   pnDocs.cedFront.url,
           doc_back_url:    pnDocs.cedBack.url,
           selfie_url:      pnDocs.selfie.url,
+          bank_certificate_url:            pnDocs.bankCert.url,
+          bank_statement_or_tax_return_url: pnDocs.incomeProof.url,
           funds_decl_url:  pnDocs.decOrigen.url,
           terms_accepted:  true,
 
@@ -815,10 +811,10 @@ useEffect(() => {
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px" }}>
             <CatalogSelect label="Tipo de documento" value={pn.docType} onChange={pf("docType")}
               items={catalogs.documentTypes} fallback={DOC_TYPE_FALLBACK} loading={catalogs.loading} required />
-            <div><label style={LS}>Número de documento <span style={{color:"var(--accent)"}}>*</span> <RampTag /></label>
+            <div><label style={LS}>Número de documento <span style={{color:"var(--accent)"}}>*</span></label>
               <input value={pn.docNum} onChange={e => pf("docNum")(e.target.value)} placeholder="Ej. 1023456789" style={IS} />
             </div>
-            <div><label style={LS}>Fecha de expedición <span style={{color:"var(--accent)"}}>*</span> <RampTag /></label>
+            <div><label style={LS}>Fecha de expedición <span style={{color:"var(--accent)"}}>*</span></label>
               <input type="date" value={pn.docFecha} onChange={e => pf("docFecha")(e.target.value)} style={IS} />
             </div>
             <div />
@@ -833,16 +829,16 @@ useEffect(() => {
 
           <SecTitle text="Nombres y apellidos" />
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px" }}>
-            <div><label style={LS}>Primer nombre <span style={{color:"var(--accent)"}}>*</span> <RampTag /></label>
+            <div><label style={LS}>Primer nombre <span style={{color:"var(--accent)"}}>*</span></label>
               <input value={pn.pn1} onChange={e => pf("pn1")(e.target.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ ]/g,""))} placeholder="Ej. Juan" style={IS} maxLength={25} />
             </div>
-            <div><label style={LS}>Segundo nombre <RampTag /></label>
+            <div><label style={LS}>Segundo nombre</label>
               <input value={pn.pn2} onChange={e => pf("pn2")(e.target.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ ]/g,""))} placeholder="Opcional" style={IS} maxLength={25} />
             </div>
-            <div><label style={LS}>Primer apellido <span style={{color:"var(--accent)"}}>*</span> <RampTag /></label>
+            <div><label style={LS}>Primer apellido <span style={{color:"var(--accent)"}}>*</span></label>
               <input value={pn.pa1} onChange={e => pf("pa1")(e.target.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ ]/g,""))} placeholder="Ej. Gómez" style={IS} maxLength={25} />
             </div>
-            <div><label style={LS}>Segundo apellido <RampTag /></label>
+            <div><label style={LS}>Segundo apellido</label>
               <input value={pn.pa2} onChange={e => pf("pa2")(e.target.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ ]/g,""))} placeholder="Opcional" style={IS} maxLength={25} />
             </div>
             {fullName && (
@@ -855,7 +851,7 @@ useEffect(() => {
 
           <SecTitle text="Datos personales" />
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px" }}>
-            <div><label style={LS}>Fecha de nacimiento <span style={{color:"var(--accent)"}}>*</span> <RampTag /></label>
+            <div><label style={LS}>Fecha de nacimiento <span style={{color:"var(--accent)"}}>*</span></label>
               <input type="date" value={pn.fechaNac} onChange={e => pf("fechaNac")(e.target.value)} style={IS} />
             </div>
             <OptSelect label="Sexo" value={pn.sexo} onChange={pf("sexo")} options={SEX_OPTIONS} />
@@ -1037,10 +1033,12 @@ useEffect(() => {
         <>
           <SecTitle text="Documentos requeridos" />
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px" }}>
-            <UploadZone label="Cédula — Frente"                hint="JPG o PNG · Parte frontal"    icon="ti-id"      state={pnDocs.cedFront}  onChange={pd("cedFront")} />
-            <UploadZone label="Cédula — Reverso"               hint="JPG o PNG · Parte trasera"    icon="ti-id"      state={pnDocs.cedBack}   onChange={pd("cedBack")} />
-            <UploadZone label="Selfie con documento"           hint="Foto sosteniendo tu cédula"  icon="ti-camera"  state={pnDocs.selfie}    onChange={pd("selfie")} />
-            <UploadZone label="Declaración de origen de fondos" hint="PDF firmado"                 icon="ti-writing" state={pnDocs.decOrigen} onChange={pd("decOrigen")} />
+            <UploadZone label="ID — Frente"                     hint="JPG o PNG · Parte frontal"    icon="ti-id"        state={pnDocs.cedFront}    onChange={pd("cedFront")} />
+            <UploadZone label="ID — Reverso"                    hint="JPG o PNG · Parte trasera"    icon="ti-id"        state={pnDocs.cedBack}     onChange={pd("cedBack")} />
+            <UploadZone label="Selfie con ID"                   hint="Foto sosteniendo tu documento" icon="ti-camera"   state={pnDocs.selfie}      onChange={pd("selfie")} />
+            <UploadZone label="Certificado bancario"            hint="PDF o imagen · vigente"        icon="ti-building-bank" state={pnDocs.bankCert}    onChange={pd("bankCert")} />
+            <UploadZone label="Extractos bancarios o Declaración de renta" hint="PDF · el que aplique" icon="ti-file-text" state={pnDocs.incomeProof} onChange={pd("incomeProof")} />
+            <UploadZone label="Declaración de origen de fondos" hint="PDF firmado"                   icon="ti-writing"   state={pnDocs.decOrigen}   onChange={pd("decOrigen")} />
           </div>
           <SecTitle text="Declaraciones" />
           <DeclChecklist defs={PN_DECL_DEFS} values={pnDecls} onToggle={(k, v) => setPnDecls(p => ({ ...p, [k]: v }))} />

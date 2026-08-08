@@ -1,6 +1,7 @@
 // supabase/functions/bepay-payouts/index.ts
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { debitBalanceIfSufficient, creditBalance, applyPayoutStatusTransition } from "../_shared/balance.ts";
 
 const BEPAY_BASE = "https://app.bepay.com.co/api/v1";
 const corsHeaders = {
@@ -191,7 +192,21 @@ serve(async (req) => {
         const comisionFija = profile.tarifa_enviar ?? 1190;
         const comisionVariable = Math.round(amount * (profile.tarifa_variable ?? 0.0012));
         const comisionTotal = comisionFija + comisionVariable;
+        const totalADebitar = amount + comisionTotal;
         const reference = payload?.reference ? sanitize(payload.reference, 100) : "DISP-" + user.id.slice(0, 8) + "-" + Date.now();
+
+        // ── Verificar y descontar saldo ANTES de enviar nada a Bepay — si no
+        // alcanza, la operación se bloquea aquí mismo y nunca llega a Bepay.
+        // El débito es atómico (ver debitBalanceIfSufficient): si el saldo no
+        // alcanza, devuelve null y no se descontó nada.
+        const balanceAfterDebit = await debitBalanceIfSufficient(adminClient, user.id, totalADebitar);
+        if (balanceAfterDebit === null) {
+          const { data: profBal } = await adminClient.from("profiles").select("balance").eq("id", user.id).single();
+          const saldoDisponible = Number(profBal?.balance ?? 0);
+          throw new Error(
+            `Fondos insuficientes — el total a debitar es $${totalADebitar.toLocaleString("es-CO")} y tu saldo disponible es $${saldoDisponible.toLocaleString("es-CO")}.`
+          );
+        }
 
         const res = await fetch(BEPAY_BASE + "/payout/breb/send", {
           method: "POST",
@@ -203,6 +218,12 @@ serve(async (req) => {
           }),
         });
         const bepayResult = await res.json();
+
+        // Bepay rechazó de plano la dispersión (nunca quedó PENDING) — se
+        // reintegra de inmediato lo que se descontó arriba.
+        if (!bepayResult.success) {
+          await creditBalance(adminClient, user.id, totalADebitar);
+        }
 
         const { data: txRow } = await adminClient.from("bepay_transactions").insert({
           user_id: user.id,
@@ -252,7 +273,19 @@ serve(async (req) => {
         const comisionFija = profile.tarifa_enviar ?? 1190;
         const comisionVariable = Math.round(amount * (profile.tarifa_variable ?? 0.0012));
         const comisionTotal = comisionFija + comisionVariable;
+        const totalADebitar = amount + comisionTotal;
         const reference = payload?.reference ? sanitize(payload.reference, 100) : "ACH-" + user.id.slice(0, 8) + "-" + Date.now();
+
+        // ── Igual que en payout_breb: bloquear aquí si no alcanza el saldo,
+        // antes de tocar a Bepay para nada.
+        const balanceAfterDebit = await debitBalanceIfSufficient(adminClient, user.id, totalADebitar);
+        if (balanceAfterDebit === null) {
+          const { data: profBal } = await adminClient.from("profiles").select("balance").eq("id", user.id).single();
+          const saldoDisponible = Number(profBal?.balance ?? 0);
+          throw new Error(
+            `Fondos insuficientes — el total a debitar es $${totalADebitar.toLocaleString("es-CO")} y tu saldo disponible es $${saldoDisponible.toLocaleString("es-CO")}.`
+          );
+        }
 
         const res = await fetch(BEPAY_BASE + "/payout/ach/send", {
           method: "POST",
@@ -274,6 +307,10 @@ serve(async (req) => {
           }),
         });
         const bepayResult = await res.json();
+
+        if (!bepayResult.success) {
+          await creditBalance(adminClient, user.id, totalADebitar);
+        }
 
         await adminClient.from("bepay_transactions").insert({
           user_id: user.id,
@@ -326,9 +363,20 @@ serve(async (req) => {
         const statusResult = await res.json();
 
         if (statusResult.data && statusResult.data.status) {
-          await adminClient.from("bepay_transactions")
-            .update({ status: statusResult.data.status, updated_at: new Date().toISOString() })
-            .eq("bepay_ide", payoutId);
+          const { data: txRow } = await adminClient
+            .from("bepay_transactions")
+            .select("id, user_id, status, amount, comision_total")
+            .eq("bepay_ide", payoutId)
+            .eq("type", "payout")
+            .maybeSingle();
+
+          if (txRow) {
+            // Reintegra saldo si pasó a rechazada — antes de sobreescribir el status.
+            await applyPayoutStatusTransition(adminClient, txRow, statusResult.data.status);
+            await adminClient.from("bepay_transactions")
+              .update({ status: statusResult.data.status, updated_at: new Date().toISOString() })
+              .eq("id", txRow.id);
+          }
         }
         result = statusResult;
         break;
@@ -340,7 +388,7 @@ serve(async (req) => {
 
         const { data: pending } = await adminClient
           .from("bepay_transactions")
-          .select("id, bepay_ide")
+          .select("id, bepay_ide, user_id, amount, comision_total, status")
           .eq("type", "payout")
           .eq("status", "PENDING")
           .limit(50);
@@ -360,6 +408,8 @@ serve(async (req) => {
             const statusJson = await res.json();
 
             if (statusJson.data && statusJson.data.status && statusJson.data.status !== "PENDING") {
+              // Reintegra saldo si pasó a rechazada — antes de sobreescribir el status.
+              await applyPayoutStatusTransition(adminClient, tx, statusJson.data.status);
               await adminClient.from("bepay_transactions")
                 .update({ status: statusJson.data.status, updated_at: new Date().toISOString() })
                 .eq("id", tx.id);

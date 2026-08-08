@@ -10,6 +10,7 @@ export interface User {
   tarifa_recibir?: number;
   tarifa_enviar?: number;
   tarifa_variable?: number;
+  balance?: number;
   is_active?: boolean;
   created_at: string;
 }

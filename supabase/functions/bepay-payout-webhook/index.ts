@@ -9,6 +9,7 @@
 // dispersión").
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { applyPayoutStatusTransition } from "../_shared/balance.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -104,7 +105,7 @@ serve(async (req) => {
     // bepay-payouts al crearla — ver extractPayoutId en ese archivo) ──────
     const { data: txRow } = await adminClient
       .from("bepay_transactions")
-      .select("id, user_id")
+      .select("id, user_id, status, amount, comision_total")
       .eq("bepay_ide", String(payoutId))
       .eq("type", "payout")
       .single();
@@ -115,6 +116,12 @@ serve(async (req) => {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // Reintegra saldo si la dispersión pasó de PENDING a un estado de
+    // rechazo/fallo — no hace nada si pasó a un estado de éxito, y es seguro
+    // aunque el webhook llegue duplicado (solo actúa si el status guardado
+    // todavía era PENDING). Debe ir ANTES de sobreescribir el status abajo.
+    await applyPayoutStatusTransition(adminClient, txRow, finalStatus);
 
     const { error: updateErr } = await adminClient
       .from("bepay_transactions")

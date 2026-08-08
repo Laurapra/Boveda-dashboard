@@ -1,7 +1,7 @@
 // src/pages/Dispersion.tsx
 import React, { useState, useRef } from "react";
 import Papa from "papaparse";
-//import { useAuthStore } from "../store/authStore";
+import { useAuthStore } from "../store/authStore";
 import type { ToastType } from "../types";
 import {lookupBrebKey, sendPayoutBreb} from "../lib/bepayClient";
 
@@ -24,10 +24,12 @@ interface SharedProps {
 
 
 function IndividualTab({ fmt, onToast }: SharedProps) {
+  const user = useAuthStore((s) => s.user);
   const [key, setKey]                   = useState("");
   const [amount, setAmount]             = useState("");
   const [resolvedName, setResolvedName] = useState<string | null>(null);
   const [lookupState, setLookupState]   = useState<"idle" | "loading" | "ok">("idle");
+  const [sending, setSending]           = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 
@@ -64,28 +66,41 @@ function IndividualTab({ fmt, onToast }: SharedProps) {
     setAmount(clean ? Number(clean).toLocaleString("es-CO") : "");
   };
 
-  const rawAmount = Number(amount.replace(/\D/g, "")) || 0;
-  const fee       = Math.round(rawAmount * 0.012);
-  const total     = rawAmount + fee;
-  const canSend   = rawAmount > 0 && resolvedName !== null;
+  // Misma fórmula que aplica el backend (bepay-payouts): fija (tarifa_enviar,
+  // default 1190) + variable (tarifa_variable, default 0.12%) — antes esta
+  // vista mostraba un 1.2% plano que no coincidía con lo que en verdad se
+  // cobraba al enviar.
+  const rawAmount        = Number(amount.replace(/\D/g, "")) || 0;
+  const comisionFija     = user?.tarifa_enviar ?? 1190;
+  const comisionVariable = Math.round(rawAmount * (user?.tarifa_variable ?? 0.0012));
+  const fee               = rawAmount > 0 ? comisionFija + comisionVariable : 0;
+  const total              = rawAmount + fee;
+  const saldoDisponible    = user?.balance ?? 0;
+  const fondosInsuficientes = rawAmount > 0 && total > saldoDisponible;
+  const canSend   = rawAmount > 0 && resolvedName !== null && !fondosInsuficientes && !sending;
 
   const handleSend = async () => {
   if (!canSend || !resolvedName) return;
 
+  setSending(true);
   try {
     const reference = `BOV-${Date.now()}`;
     const res = await sendPayoutBreb(key, rawAmount, "Dispersión Bóveda", reference);
 
     if (res?.success === false) {
-      onToast("error", "Dispersión rechazada", typeof res.message === "string" ? res.message : JSON.stringify(res.message));
+      const msg = res.error ?? res.message;
+      onToast("error", "Dispersión rechazada", typeof msg === "string" ? msg : JSON.stringify(msg));
       return;
     }
 
     onToast("ok", "Dispersión enviada", `${fmt(rawAmount)} → ${resolvedName}`);
     setKey(""); setAmount(""); setResolvedName(null); setLookupState("idle");
-  } catch (err: any) {
-    onToast("error", "Error en dispersión", err.message);
+    // Refresca el saldo mostrado (se descontó en el backend al quedar pendiente).
+    await useAuthStore.getState().loadSession();
+  } catch (err: unknown) {
+    onToast("error", "Error en dispersión", err instanceof Error ? err.message : String(err));
   } finally {
+    setSending(false);
   }
 };
 
@@ -178,8 +193,9 @@ function IndividualTab({ fmt, onToast }: SharedProps) {
         <h3 style={{ fontSize: "15px", fontWeight: 600, marginBottom: "16px" }}>Resumen</h3>
         <div style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", padding: "14px 16px", flex: 1 }}>
           {[
+            { k: "Saldo disponible",   v: fmt(saldoDisponible), green: false },
             { k: "Monto a enviar",     v: fmt(rawAmount),    green: false },
-            { k: "Comisión (1.2%)",    v: fmt(fee),          green: false },
+            { k: "Comisión",           v: fmt(fee),          green: false },
             { k: "Titular verificado", v: resolvedName ?? "—", green: !!resolvedName },
           ].map((r) => (
             <div key={r.k} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", fontSize: "13px", borderBottom: "1px solid var(--border)" }}>
@@ -188,10 +204,15 @@ function IndividualTab({ fmt, onToast }: SharedProps) {
             </div>
           ))}
           <div style={{ display: "flex", justifyContent: "space-between", padding: "11px 0 0", fontSize: "15px", fontWeight: 700 }}>
-            <span style={{ color: "var(--t2)" }}>Total débito</span>
-            <b style={{ fontVariantNumeric: "tabular-nums" }}>{fmt(total)}</b>
+            <span style={{ color: "var(--t2)" }}>Total a debitar</span>
+            <b style={{ fontVariantNumeric: "tabular-nums", color: fondosInsuficientes ? "var(--error)" : undefined }}>{fmt(total)}</b>
           </div>
         </div>
+        {fondosInsuficientes && (
+          <div style={{ marginTop: "12px", padding: "10px 12px", borderRadius: "var(--radius-sm)", background: "var(--error-dim)", border: "1px solid color-mix(in srgb, var(--error) 30%, transparent)", color: "var(--error)", fontSize: "12.5px", fontWeight: 600 }}>
+            Fondos insuficientes — el total a debitar supera tu saldo disponible.
+          </div>
+        )}
         <p style={{ fontSize: "11.5px", color: "var(--t3)", margin: "14px 0" }}>
           Montos sobre $2.000.000 requieren verificación 2FA.
         </p>
@@ -207,7 +228,7 @@ function IndividualTab({ fmt, onToast }: SharedProps) {
             opacity: canSend ? 1 : 0.45, transition: "opacity .14s",
           }}
         >
-          Enviar dispersión
+          {sending ? "Enviando…" : "Enviar dispersión"}
         </button>
       </div>
     </div>

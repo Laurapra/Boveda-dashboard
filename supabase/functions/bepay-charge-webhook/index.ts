@@ -1,6 +1,7 @@
 // supabase/functions/bepay-charge-webhook/index.ts
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { creditBalance } from "../_shared/balance.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -119,9 +120,14 @@ serve(async (req) => {
     // ── Buscar la transacción local por bepay_ide ──────────────────
     let { data: txRow } = await adminClient
       .from("bepay_transactions")
-      .select("id, user_id")
+      .select("id, user_id, status")
       .eq("bepay_ide", ide)
       .single();
+
+    // Se guarda antes de cualquier reasignación de txRow (rama "no existe
+    // fila local" de abajo) — es lo que decide si el abono a saldo ya se
+    // hizo antes (idempotencia ante webhooks duplicados/reintentos).
+    const previousStatus = txRow?.status ?? null;
 
     if (!txRow) {
       // No existe fila local — esto pasa cuando alguien transfiere DIRECTO
@@ -216,7 +222,7 @@ serve(async (req) => {
     if (finalStatus === "APPROVED") {
       const { data: txFull } = await adminClient
         .from("bepay_transactions")
-        .select("account_key, amount, user_id")
+        .select("account_key, amount, user_id, comision_total, type")
         .eq("id", txRow.id)
         .single();
 
@@ -226,6 +232,36 @@ serve(async (req) => {
           p_user_id: txFull.user_id,
           p_amount: txFull.amount,
         });
+      }
+
+      // ── Abonar el neto (monto - comisión) al saldo del cliente ────────
+      // Solo si ANTES no estaba ya en APPROVED — así un webhook duplicado o
+      // un reintento de Bepay no abona dos veces la misma transacción.
+      // Ej: recauda $10.000, comisión $1.190 -> se abonan $8.810.
+      if (txFull && txFull.type === "charge" && previousStatus !== "APPROVED") {
+        let comision = txFull.comision_total;
+        if (comision === null || comision === undefined) {
+          // Cobros que llegaron directo a la llave (sin pasar por
+          // create_link) no traen comision_total guardado — se usa la
+          // tarifa vigente del usuario como respaldo.
+          const { data: prof } = await adminClient
+            .from("profiles")
+            .select("tarifa_recibir")
+            .eq("id", txFull.user_id)
+            .single();
+          comision = prof?.tarifa_recibir ?? 1190;
+        }
+        const neto = Math.max(0, Number(txFull.amount) - Number(comision));
+        if (neto > 0) {
+          await creditBalance(adminClient, txFull.user_id, neto);
+          await adminClient.from("audit_log").insert({
+            user_id: txFull.user_id,
+            action: "CHARGE_BALANCE_CREDIT",
+            entity: "bepay_transaction",
+            entity_id: txRow.id,
+            metadata: { amount: txFull.amount, comision, neto },
+          });
+        }
       }
     }
 

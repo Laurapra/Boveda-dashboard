@@ -36,6 +36,75 @@ function validateAmount(amount: unknown): number {
   return n;
 }
 
+// El nombre real del campo que trae la imagen del QR en la respuesta de
+// Bepay (/charges/qr) no está confirmado — se prueban varios nombres
+// posibles en vez de asumir uno solo (mismo patrón defensivo que se usó
+// para los webhooks, donde el nombre real de un campo terminó siendo
+// distinto al que se había asumido). Si el valor encontrado no trae ya el
+// prefijo "data:" ni es una URL http(s), se asume base64 crudo de una
+// imagen y se envuelve como data URI — sin esto, un <img src="..."> con
+// puro base64 sin el prefijo "data:image/png;base64," no renderiza nada,
+// y descargarlo tal cual guarda un archivo que no abre ningún visor.
+function extractQrImage(data: Record<string, unknown> | null | undefined): string | null {
+  if (!data) return null;
+  const raw = data.qr ?? data.qrImage ?? data.qr_image ?? data.qr_code ?? data.qrCode
+    ?? data.image ?? data.image_base64 ?? data.qr_base64 ?? data.base64 ?? null;
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("data:") || /^https?:\/\//i.test(trimmed)) return trimmed;
+  return `data:image/png;base64,${trimmed}`;
+}
+
+// Varios catálogos de Bepay (Banks, pseBanks, ciiuCodes, regions, cities)
+// vienen paginados con un paginador tipo Laravel (meta.current_page /
+// per_page / total) que NO respeta el "per_page" que mandamos en la URL —
+// siempre devuelve un tamaño de página fijo (confirmado: pedimos
+// per_page=200 en /Banks y la respuesta trajo meta.per_page=15,
+// items_in_page=15, total=53). Como antes solo pedíamos la página 1, nos
+// quedábamos con 15 de 53 bancos. Este helper recorre todas las páginas con
+// "page" hasta juntar el total, y se detiene solo si la API deja de traer
+// datos o si detecta que "page" no tuvo ningún efecto (mismo primer id que
+// la vuelta anterior) para no quedar en un ciclo repitiendo la misma página.
+async function fetchAllPages(url: string, token: string): Promise<Record<string, unknown>[]> {
+  const all: Record<string, unknown>[] = [];
+  let lastFirstId: unknown = undefined;
+
+  for (let page = 1; page <= 30; page++) {
+    const sep = url.includes("?") ? "&" : "?";
+    const res = await fetch(`${url}${sep}page=${page}`, {
+      headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
+    });
+    const json = await res.json();
+    if (!json.success || !Array.isArray(json.data) || json.data.length === 0) break;
+
+    const firstId = (json.data[0] as Record<string, unknown>)?.id;
+    if (firstId !== undefined && firstId === lastFirstId) break;
+    lastFirstId = firstId;
+
+    all.push(...(json.data as Record<string, unknown>[]));
+
+    const total = json.meta?.total;
+    if (typeof total === "number" && all.length >= total) break;
+  }
+
+  return all;
+}
+
+// El catálogo /Banks de Bepay trae filas que no son bancos reales — ej.
+// "A CONTINUACIÓN SELECCIONE SU BANCO" (un placeholder de su propio
+// formulario) y "BAN100" (un código de prueba). Se filtran con un criterio
+// conservador para no descartar bancos reales por error: solo se excluye
+// texto de placeholder ("SELECCION...") o nombres que son puro código
+// (letras+dígitos sin espacios, ej. "BAN100") — ningún banco real de la
+// lista tiene esa forma.
+function isJunkBankName(name: string): boolean {
+  const upper = name.toUpperCase().trim();
+  if (!upper) return true;
+  if (upper.includes("SELECCION")) return true;
+  if (/^[A-Z]{2,6}\d{1,6}$/.test(upper)) return true;
+  return false;
+}
+
 async function writeAuditLog(
   adminClient: ReturnType<typeof createClient>,
   userId: string,
@@ -224,7 +293,43 @@ serve(async (req) => {
             account_id: accountId, total: amount, description: concept,
           }),
         });
-        result = await res.json();
+        const bepayResult = await res.json();
+        const qrImage = extractQrImage(bepayResult?.data);
+
+        // Antes esta acción no guardaba nada en bepay_transactions (a
+        // diferencia de create_link) — el QR se generaba pero, si alguien
+        // pagaba, el webhook no encontraba fila local y el cobro quedaba
+        // invisible en Movimientos/Mis billeteras. Se guarda igual que un
+        // link, marcando el concepto como QR dinámico para que el frontend
+        // lo etiquete "Recaudo QR dinámico Bre-B".
+        if (bepayResult.success && bepayResult.data) {
+          const { data: txRow } = await adminClient.from("bepay_transactions").insert({
+            user_id: user.id,
+            bepay_ide: bepayResult.data.ide ?? bepayResult.data.id,
+            type: "charge", amount, concept,
+            status: "PENDING",
+            bepay_link: bepayResult.data.link ?? null,
+            reference: ref,
+            account_key: virtualKey,
+            payment_method: "MOVII_BREB_QR",
+            tarifa_aplicada: profile.tarifa_recibir,
+            tarifa_variable: profile.tarifa_variable,
+            comision_total: profile.tarifa_recibir,
+            raw_response: bepayResult.data,
+          }).select().single();
+
+          await writeAuditLog(adminClient, user.id, "CREATE_QR", txRow?.id ?? ref, {
+            amount, concept, virtual_key: virtualKey, bepay_ide: bepayResult.data.ide,
+          });
+        }
+
+        // Se normaliza el campo de imagen a "qr" para que el frontend tenga
+        // un único nombre confiable que leer, sin dejar de mandar la
+        // respuesta cruda de Bepay por si hace falta revisarla.
+        result = {
+          ...bepayResult,
+          data: bepayResult.data ? { ...bepayResult.data, qr: qrImage } : bepayResult.data,
+        };
         break;
       }
 
@@ -619,22 +724,18 @@ serve(async (req) => {
 
         const colombiaId = 48;
 
-        const [regRes, citRes] = await Promise.all([
-          fetch(`${BEPAY_BASE}/regions/${colombiaId}`, {
-            headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
-          }),
-          fetch(`${BEPAY_BASE}/cities/${colombiaId}`, {
-            headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
-          }),
+        // Colombia tiene 32 departamentos y más de 1000 ciudades/municipios —
+        // sin recorrer todas las páginas nos quedábamos con solo las
+        // primeras 15 de cada una (mismo problema detectado en /Banks).
+        const [regions, cities] = await Promise.all([
+          fetchAllPages(`${BEPAY_BASE}/regions/${colombiaId}`, token),
+          fetchAllPages(`${BEPAY_BASE}/cities/${colombiaId}`, token),
         ]);
 
-        const regJson = await regRes.json();
-        const citJson = await citRes.json();
+        if (regions.length === 0) throw new Error("Error regiones: la API de Bepay no devolvió datos");
+        if (cities.length === 0) throw new Error("Error ciudades: la API de Bepay no devolvió datos");
 
-        if (!regJson.success) throw new Error(`Error regiones: ${JSON.stringify(regJson.message)}`);
-        if (!citJson.success) throw new Error(`Error ciudades: ${JSON.stringify(citJson.message)}`);
-
-        const geoData = { colombia_id: colombiaId, regions: regJson.data ?? [], cities: citJson.data ?? [] };
+        const geoData = { colombia_id: colombiaId, regions, cities };
 
         await adminClient.from("geo_cache").upsert({
           key: "colombia_geo", data: geoData, updated_at: new Date().toISOString(),
@@ -690,18 +791,18 @@ serve(async (req) => {
           }
         }
 
-        const perPage = payload?.per_page ?? 100;
-        const res = await fetch(`${BEPAY_BASE}/Banks?per_page=${perPage}`, {
-          headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
+        const allBanks = await fetchAllPages(`${BEPAY_BASE}/Banks`, token);
+        const banks = allBanks.filter((b) => {
+          const name = String((b as Record<string, unknown>)?.name ?? "");
+          return name.trim() && !isJunkBankName(name);
         });
-        const json = await res.json();
-        if (!json.success) throw new Error(`Error bancos: ${JSON.stringify(json.message)}`);
+        if (banks.length === 0) throw new Error("Error bancos: la API de Bepay no devolvió bancos válidos");
 
         await adminClient.from("geo_cache").upsert({
-          key: "banks", data: json.data, updated_at: new Date().toISOString(),
+          key: "banks", data: banks, updated_at: new Date().toISOString(),
         });
 
-        result = { success: true, data: json.data, from_cache: false };
+        result = { success: true, data: banks, from_cache: false };
         break;
       }
 
@@ -721,17 +822,14 @@ serve(async (req) => {
           }
         }
 
-        const res = await fetch(`${BEPAY_BASE}/pseBanks`, {
-          headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
-        });
-        const json = await res.json();
-        if (!json.success) throw new Error(`Error bancos PSE: ${JSON.stringify(json.message)}`);
+        const pseBanks = await fetchAllPages(`${BEPAY_BASE}/pseBanks`, token);
+        if (pseBanks.length === 0) throw new Error("Error bancos PSE: la API de Bepay no devolvió datos");
 
         await adminClient.from("geo_cache").upsert({
-          key: "pse_banks", data: json.data, updated_at: new Date().toISOString(),
+          key: "pse_banks", data: pseBanks, updated_at: new Date().toISOString(),
         });
 
-        result = { success: true, data: json.data, from_cache: false };
+        result = { success: true, data: pseBanks, from_cache: false };
         break;
       }
 
@@ -751,34 +849,39 @@ serve(async (req) => {
           }
         }
 
-        const perPage = payload?.per_page ?? 100;
-        const res = await fetch(`${BEPAY_BASE}/ciiuCodes?per_page=${perPage}`, {
-          headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
-        });
-        const json = await res.json();
-        if (!json.success) throw new Error(`Error códigos CIIU: ${JSON.stringify(json.message)}`);
+        const ciiuCodes = await fetchAllPages(`${BEPAY_BASE}/ciiuCodes`, token);
+        if (ciiuCodes.length === 0) throw new Error("Error códigos CIIU: la API de Bepay no devolvió datos");
 
         await adminClient.from("geo_cache").upsert({
-          key: "ciiu_codes", data: json.data, updated_at: new Date().toISOString(),
+          key: "ciiu_codes", data: ciiuCodes, updated_at: new Date().toISOString(),
         });
 
-        result = { success: true, data: json.data, from_cache: false };
+        result = { success: true, data: ciiuCodes, from_cache: false };
         break;
       }
 
       // ── Sincronizar cobros pendientes con el estado real de Bepay ──
+      // Normalmente los cobros por link de pago quedan en PENDING y la API
+      // de Bepay no siempre notifica el rechazo. Por eso primero se
+      // reconsulta el estado real en Bepay (como antes); solo si Bepay
+      // TODAVÍA no da un estado final y ya pasaron 30 minutos desde que se
+      // creó el cobro, se marca RECHAZADO localmente como último recurso —
+      // nunca se rechaza de entrada solo por haber pasado el tiempo.
       case "sync_pending_charges": {
         if (profile.role !== "admin") throw new Error("No autorizado");
 
+        const THIRTY_MIN_MS = 30 * 60 * 1000;
+
         const { data: pending } = await adminClient
           .from("bepay_transactions")
-          .select("id, bepay_ide")
+          .select("id, bepay_ide, user_id, created_at")
           .eq("type", "charge")
           .eq("status", "PENDING")
           .limit(50);
 
         let updated = 0;
         let checked = 0;
+        let expired = 0;
 
         for (const tx of pending ?? []) {
           if (!tx.bepay_ide) continue;
@@ -811,13 +914,37 @@ serve(async (req) => {
                 }
               }
               updated++;
+            } else {
+              // Bepay sigue sin dar un estado final — solo si ya pasaron
+              // más de 30 min desde la creación se marca RECHAZADO local
+              // como fallback (los cobros nunca debitan saldo al crearse,
+              // así que rechazar aquí no requiere reintegrar nada).
+              const ageMs = Date.now() - new Date(tx.created_at).getTime();
+              if (ageMs > THIRTY_MIN_MS) {
+                await adminClient.from("bepay_transactions")
+                  .update({ status: "REJECTED", updated_at: new Date().toISOString() })
+                  .eq("id", tx.id);
+
+                await adminClient.from("audit_log").insert({
+                  user_id:   tx.user_id,
+                  action:    "CHARGE_TIMEOUT_REJECTED",
+                  entity:    "bepay_transaction",
+                  entity_id: tx.id,
+                  metadata:  {
+                    bepay_ide: tx.bepay_ide,
+                    age_minutes: Math.round(ageMs / 60000),
+                    last_bepay_status: statusJson.data?.status ?? null,
+                  },
+                });
+                expired++;
+              }
             }
           } catch {
             // Continúa con la siguiente aunque una falle
           }
         }
 
-        result = { success: true, checked, updated };
+        result = { success: true, checked, updated, expired };
         break;
       }
 

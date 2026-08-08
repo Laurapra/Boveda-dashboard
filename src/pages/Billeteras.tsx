@@ -83,19 +83,25 @@ function statusLabel(s: string): string {
   return "Rechazado";
 }
 
-// El bepay_ide de una dispersión cae en la referencia interna ("DISP-"/"ACH-")
-// cuando Bepay no devolvió un ID real en su respuesta — en ese caso no lo mostramos.
-function realBepayIde(m: WalletMovement): string | null {
-  if (!m.bepay_ide) return null;
-  if (m.bepay_ide.startsWith("DISP-") || m.bepay_ide.startsWith("ACH-")) return null;
-  return m.bepay_ide;
-}
-
-// Concepto automático según la acción — ej: "Dispersión Breb", "Recaudo Pse"
+// Concepto automático según el producto — ej: "Recaudo llave Bre-B",
+// "Recaudo QR dinámico Bre-B", "Dispersión ACH". Se clasifica por palabras
+// clave sobre payment_method/concept (los nombres exactos que manda Bepay
+// no están 100% documentados para todos los productos) en vez de una lista
+// cerrada, así un valor nuevo no reconocido cae en un rótulo genérico
+// razonable en vez de romper la tabla.
 function conceptLabel(m: WalletMovement): string {
   if (m.type === "payout") {
-    return m.account_type === "Bre-B" ? "Dispersión Breb" : "Dispersión Ach";
+    return m.account_type === "Bre-B" ? "Dispersión Bre-B" : "Dispersión ACH";
   }
+
+  const raw = `${m.payment_method ?? ""} ${m.concept ?? ""}`.toUpperCase();
+  const isQr = raw.includes("QR");
+  const isStatic = raw.includes("STATIC") || raw.includes("ESTATIC") || raw.includes("ESTÁTIC");
+
+  if (raw.includes("NEQUI")) return "Recaudo Nequi Push";
+  if (isQr && isStatic) return "Recaudo QR Estático Bre-B";
+  if (isQr) return "Recaudo QR dinámico Bre-B";
+  if (raw.includes("BREB") || raw.includes("BRE-B") || raw.includes("MOVII")) return "Recaudo llave Bre-B";
   if (m.payment_method) {
     const method = m.payment_method.toLowerCase();
     return "Recaudo " + method.charAt(0).toUpperCase() + method.slice(1);
@@ -112,10 +118,10 @@ export const BilleterasView: React.FC<Props> = ({ fmt, onToast }) => {
   const [movements, setMovements] = useState<WalletMovement[]>([]);
   const [movementsLoading, setMovementsLoading] = useState(false);
   const [movementFilter, setMovementFilter] = useState<"all" | "charge" | "payout">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "completed" | "pending" | "rejected">("all");
 
   const [modalOpen, setModalOpen] = useState(false);
   const [reference, setReference] = useState("");
-  const [keyValueInput, setKeyValueInput] = useState("");
   const [creating, setCreating] = useState(false);
 
   // ── Datos del registro Bre-B (cuenta 437 + subcomercio) para el form ──
@@ -253,20 +259,12 @@ export const BilleterasView: React.FC<Props> = ({ fmt, onToast }) => {
   // account_id siempre es 437 (fijo del lado del backend, no se manda desde
   // aquí) y "reference" en la llamada a Bepay es el subcomercio ya
   // registrado (brebInfo.reference) — nunca se inventa desde el formulario.
-  // Lo único que la persona escribe es el key_value (la llave en sí).
-  const keyValuePattern = /^[a-zA-Z0-9@._-]{1,13}$/;
-
+  // La llave (key_value) ya no la escribe el cliente — Ramplix asigna
+  // siempre una llave personalizada generada automáticamente por el backend.
   const handleCreate = async () => {
-    // Vacío = el backend genera BERAMPLIX + consecutivo automáticamente
-    // (formato confirmado con soporte de Bepay: máx. 13 car., prefijo BE).
-    const trimmedKey = keyValueInput.trim();
-    if (trimmedKey && !keyValuePattern.test(trimmedKey)) {
-      onToast("error", "Llave inválida", "Máximo 13 caracteres: letras, números y @ . _ - (sin espacios ni tildes)");
-      return;
-    }
     setCreating(true);
     try {
-      const res: CreateVirtualKeyResponse = await createVirtualKey(reference.trim() || undefined, trimmedKey || undefined);
+      const res: CreateVirtualKeyResponse = await createVirtualKey(reference.trim() || undefined, undefined);
 
       if (!res || res.success === false) {
         onToast("error", "No se pudo crear la billetera", res?.error ?? "Inténtalo de nuevo");
@@ -275,7 +273,6 @@ export const BilleterasView: React.FC<Props> = ({ fmt, onToast }) => {
 
       onToast("ok", "Billetera creada", "Llave: " + (res.data?.key_value ?? ""));
       setReference("");
-      setKeyValueInput("");
       setModalOpen(false);
       await loadWallet();
     } catch (err) {
@@ -318,7 +315,18 @@ export const BilleterasView: React.FC<Props> = ({ fmt, onToast }) => {
     borderBottom: "1px solid var(--border)",
   };
 
-  const filteredMovements = movements.filter((m) => movementFilter === "all" || m.type === movementFilter);
+  // Mismo agrupamiento que usa statusLabel() para pintar el badge —
+  // "completado" cubre APPROVED/COMPLETED, "pendiente" cubre PENDING, y
+  // cualquier otro estado (REJECTED, FAILED, etc.) cae en "rechazado".
+  const statusGroup = (s: string): "completed" | "pending" | "rejected" => {
+    if (s === "APPROVED" || s === "COMPLETED") return "completed";
+    if (s === "PENDING") return "pending";
+    return "rejected";
+  };
+  const filteredMovements = movements.filter((m) =>
+    (movementFilter === "all" || m.type === movementFilter) &&
+    (statusFilter === "all" || statusGroup(m.status) === statusFilter)
+  );
   const totalIngresos = movements.filter((m) => m.type === "charge" && (m.status === "APPROVED" || m.status === "COMPLETED")).reduce((s, m) => s + m.amount, 0);
   const totalDispersado = movements.filter((m) => m.type === "payout" && (m.status === "APPROVED" || m.status === "COMPLETED")).reduce((s, m) => s + m.amount, 0);
 
@@ -367,17 +375,15 @@ export const BilleterasView: React.FC<Props> = ({ fmt, onToast }) => {
           onClose={() => {
             setModalOpen(false);
             setReference("");
-            setKeyValueInput("");
           }}
           title="Nueva billetera"
-          subtitle="Registro Bre-B en Bepay — cuenta Ramplix"
+          subtitle="Registro Bre-B — cuenta Ramplix"
           footer={
             <>
               <button
                 onClick={() => {
                   setModalOpen(false);
                   setReference("");
-                  setKeyValueInput("");
                 }}
                 style={{ padding: "9px 16px", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--surface)", color: "var(--t1)", fontWeight: 600, cursor: "pointer" }}
               >
@@ -385,8 +391,8 @@ export const BilleterasView: React.FC<Props> = ({ fmt, onToast }) => {
               </button>
               <button
                 onClick={handleCreate}
-                disabled={creating || brebInfoLoading || !brebInfo?.reference || (!!keyValueInput.trim() && !keyValuePattern.test(keyValueInput.trim()))}
-                style={{ padding: "9px 16px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: "var(--radius-sm)", fontWeight: 600, cursor: "pointer", opacity: creating || brebInfoLoading || !brebInfo?.reference || (!!keyValueInput.trim() && !keyValuePattern.test(keyValueInput.trim())) ? 0.6 : 1 }}
+                disabled={creating || brebInfoLoading || !brebInfo?.reference}
+                style={{ padding: "9px 16px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: "var(--radius-sm)", fontWeight: 600, cursor: "pointer", opacity: creating || brebInfoLoading || !brebInfo?.reference ? 0.6 : 1 }}
               >
                 <i className="ti ti-wallet" style={{ marginRight: "6px" }} />
                 {creating ? "Creando…" : "Crear billetera"}
@@ -400,23 +406,7 @@ export const BilleterasView: React.FC<Props> = ({ fmt, onToast }) => {
             </div>
             <div>
               <div style={{ fontWeight: 600, fontSize: "14px", color: "var(--t1)" }}>Peso colombiano · COP</div>
-              <div style={{ fontSize: "12px", color: "var(--t3)", marginTop: "2px" }}>Bre-B · registro directo con Bepay</div>
-            </div>
-          </div>
-
-          {/* Datos fijos del registro — igual que lo pide Bepay: account_id (437,
-              siempre el mismo, no editable) y reference (el subcomercio que ya
-              quedó registrado con tu onboarding, tampoco editable acá). */}
-          <div style={{ display: "flex", gap: "8px", marginBottom: "14px", flexWrap: "wrap" }}>
-            <div style={{ flex: "1 1 120px", padding: "10px 12px", background: "var(--elevated)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)" }}>
-              <div style={{ fontSize: "10.5px", color: "var(--t3)", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: "3px" }}>Cuenta Bepay</div>
-              <div style={{ fontFamily: "var(--mono)", fontSize: "13.5px", fontWeight: 600, color: "var(--t1)" }}>{brebInfo?.accountId ?? 437}</div>
-            </div>
-            <div style={{ flex: "2 1 180px", padding: "10px 12px", background: "var(--elevated)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)" }}>
-              <div style={{ fontSize: "10.5px", color: "var(--t3)", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: "3px" }}>Referencia (subcomercio)</div>
-              <div style={{ fontFamily: "var(--mono)", fontSize: "13.5px", fontWeight: 600, color: brebInfo?.reference ? "var(--t1)" : "var(--error)" }}>
-                {brebInfoLoading ? "Cargando…" : brebInfo?.reference ?? "Sin registrar"}
-              </div>
+              <div style={{ fontSize: "12px", color: "var(--t3)", marginTop: "2px" }}>Bre-B</div>
             </div>
           </div>
 
@@ -427,21 +417,12 @@ export const BilleterasView: React.FC<Props> = ({ fmt, onToast }) => {
           ) : null}
 
           <Input
-            label="Llave (key_value) — opcional"
-            value={keyValueInput}
-            onChange={(e) => setKeyValueInput(e.target.value)}
-            placeholder="Vacío = se genera RAMPLIX + consecutivo"
-            help='Máximo 13 caracteres. No escribas "BE" al inicio — Bepay lo agrega solo. Si lo dejas vacío, se genera automáticamente (RAMPLIX000, RAMPLIX001…) y queda como @BERAMPLIX000'
+            label="Identificación interna"
+            value={reference}
+            onChange={(e) => setReference(e.target.value)}
+            placeholder="Ej. Juan Pérez, Mi Negocio S.A.S."
+            help="Es el nombre de la persona o empresa que va a aparecer en la llave"
           />
-          {keyValueInput.trim() && !keyValuePattern.test(keyValueInput.trim()) ? (
-            <div style={{ fontSize: "12px", color: "var(--error)", marginTop: "-6px", marginBottom: "10px" }}>
-              Esa llave tiene caracteres no permitidos (espacios, tildes u otros símbolos).
-            </div>
-          ) : null}
-
-          <div style={{ marginTop: "12px" }}>
-            <Input label="Nota interna (opcional)" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Ej. Mi negocio" help="Solo para tu identificación interna — no se manda a Bepay" />
-          </div>
         </Modal>
       </div>
     );
@@ -459,8 +440,8 @@ export const BilleterasView: React.FC<Props> = ({ fmt, onToast }) => {
           <div style={{ fontSize: "12px", color: "var(--t3)", marginTop: "2px" }}>Bre-B · Llave virtual{wallet.reference ? " · " + wallet.reference : ""}</div>
         </div>
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: "11px", color: "var(--t3)", marginBottom: "4px" }}>Total recibido</div>
-          <div style={{ fontSize: "24px", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "var(--t1)" }}>{fmt(wallet.total_received)}</div>
+          <div style={{ fontSize: "11px", color: "var(--t3)", marginBottom: "4px" }}>Saldo</div>
+          <div style={{ fontSize: "24px", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "var(--t1)" }}>{fmt(user?.balance ?? 0)}</div>
         </div>
       </div>
 
@@ -520,6 +501,18 @@ export const BilleterasView: React.FC<Props> = ({ fmt, onToast }) => {
               <option value="charge">Solo ingresos</option>
               <option value="payout">Solo dispersiones</option>
             </select>
+            <select
+              id="movement-status-filter"
+              name="movement-status-filter"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as "all" | "completed" | "pending" | "rejected")}
+              style={{ padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--bg)", color: "var(--t1)", fontSize: "12px" }}
+            >
+              <option value="all">Todos los estados</option>
+              <option value="completed">Completado</option>
+              <option value="pending">Pendiente</option>
+              <option value="rejected">Rechazado</option>
+            </select>
             <button
               onClick={loadMovements}
               style={{ padding: "6px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--surface)", color: "var(--t2)", fontSize: "12px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "5px" }}
@@ -532,7 +525,7 @@ export const BilleterasView: React.FC<Props> = ({ fmt, onToast }) => {
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
-                {["Fecha", "IDE", "Tipo", "Concepto", "De / Para", "Banco", "Monto", "Comisión", "Estado"].map((h) => (
+                {["Fecha", "Tipo", "Concepto", "De / Para", "Banco", "Monto", "Comisión", "Estado"].map((h) => (
                   <th key={h} style={{ ...thStyle, textAlign: h === "Monto" || h === "Comisión" ? "right" : "left" }}>
                     {h}
                   </th>
@@ -542,13 +535,13 @@ export const BilleterasView: React.FC<Props> = ({ fmt, onToast }) => {
             <tbody>
               {movementsLoading ? (
                 <tr>
-                  <td colSpan={9} style={{ padding: "40px", textAlign: "center", color: "var(--t3)" }}>
+                  <td colSpan={8} style={{ padding: "40px", textAlign: "center", color: "var(--t3)" }}>
                     Cargando…
                   </td>
                 </tr>
               ) : filteredMovements.length === 0 ? (
                 <tr>
-                  <td colSpan={9} style={{ padding: "40px", textAlign: "center", color: "var(--t3)" }}>
+                  <td colSpan={8} style={{ padding: "40px", textAlign: "center", color: "var(--t3)" }}>
                     Sin movimientos registrados todavía
                   </td>
                 </tr>
@@ -556,9 +549,6 @@ export const BilleterasView: React.FC<Props> = ({ fmt, onToast }) => {
                 filteredMovements.map((m) => (
                   <tr key={m.id} onMouseEnter={(e) => (e.currentTarget.style.background = "var(--elevated)")} onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
                     <td style={{ ...tdStyle, fontSize: "12px", color: "var(--t2)" }}>{formatDateTime(m.created_at)}</td>
-                    <td style={{ ...tdStyle, fontFamily: "var(--mono)", fontSize: "11px", color: "var(--t3)" }}>
-                      {realBepayIde(m) ?? "—"}
-                    </td>
                     <td style={tdStyle}>
                       <span
                         style={{

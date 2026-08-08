@@ -311,7 +311,10 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
       const [chargesRes, payoutsRes] = await Promise.all([syncPendingCharges(), syncPendingPayouts()]);
       const totalUpdated = (chargesRes?.updated ?? 0) + (payoutsRes?.updated ?? 0);
       const totalChecked = (chargesRes?.checked ?? 0) + (payoutsRes?.checked ?? 0);
-      onToast("ok", "Sincronización completa", totalUpdated + " de " + totalChecked + " transacción(es) actualizadas");
+      const expired = chargesRes?.expired ?? 0;
+      const msg = totalUpdated + " de " + totalChecked + " transacción(es) actualizadas"
+        + (expired > 0 ? ` · ${expired} rechazada(s) por vencimiento (30 min)` : "");
+      onToast("ok", "Sincronización completa", msg);
       await loadBalances();
     } catch (err) {
       onToast("error", "Error al sincronizar", getErrorMessage(err));

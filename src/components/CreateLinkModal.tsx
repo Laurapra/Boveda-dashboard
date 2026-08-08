@@ -117,7 +117,7 @@ export const CreateLinkModal: React.FC<Props> = ({ isOpen, onClose, onToast }) =
     const ob = pnRes.data || empRes.data;
 
     if (!ob) {
-      setBlocked("Debes completar el Onboarding Bre-B antes de generar cobros.");
+      setBlocked("Debes completar el Onboarding antes de generar cobros.");
     } else if (ob.status !== "approved") {
       if (ob.status === "pending") {
         setBlocked("Tu onboarding esta pendiente de aprobacion.");
@@ -139,6 +139,23 @@ export const CreateLinkModal: React.FC<Props> = ({ isOpen, onClose, onToast }) =
     loadMethods();
     checkOnboarding();
   }, [isOpen, loadKeys, loadMethods, checkOnboarding]);
+
+  // Solo hay una billetera COP por cliente, así que en el caso normal (una
+  // sola llave activa) no tiene sentido mostrar un selector — se usa esa
+  // llave automáticamente. El selector solo reaparece si por alguna razón
+  // hay más de una (caso legado), y el aviso de "no tienes llaves" se
+  // mantiene si todavía no ha creado ninguna.
+  useEffect(() => {
+    if (keys.length !== 1) return;
+    // Envuelto en una promesa resuelta para no disparar setState de forma
+    // síncrona dentro del efecto (regla react-hooks/set-state-in-effect,
+    // mismo patrón usado en el resto del proyecto).
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (!cancelled) setSelectedKey(keys[0].key_value);
+    });
+    return () => { cancelled = true; };
+  }, [keys]);
 
   const handleAmountChange = (v: string) => {
     const clean = v.replace(/\D/g, "");
@@ -213,6 +230,34 @@ export const CreateLinkModal: React.FC<Props> = ({ isOpen, onClose, onToast }) =
     setResult(null);
     setCopied(false);
     onClose();
+  };
+
+  // Si la imagen es una URL remota (no un data URI), un <a href download>
+  // simple no siempre fuerza la descarga (restricciones de origen cruzado
+  // del navegador — a veces solo abre/navega, o guarda un archivo vacío que
+  // no se puede abrir). Se trae como blob y se descarga desde ahí, que sí
+  // funciona siempre. Si ya es un data URI, esa ruta simple sí es confiable.
+  const handleDownloadQr = async () => {
+    if (!result || !result.qrImage) return;
+    try {
+      if (result.qrImage.startsWith("data:")) {
+        const a = document.createElement("a");
+        a.href = result.qrImage;
+        a.download = downloadName;
+        a.click();
+        return;
+      }
+      const res = await fetch(result.qrImage);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = downloadName;
+      a.click();
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      onToast("error", "No se pudo descargar el QR", "Intenta de nuevo o haz clic derecho sobre la imagen para guardarla");
+    }
   };
 
   const handleShareWhatsApp = () => {
@@ -358,30 +403,40 @@ export const CreateLinkModal: React.FC<Props> = ({ isOpen, onClose, onToast }) =
 
           <div>
             <label style={{ fontSize: "12.5px", fontWeight: 600, color: "var(--t2)", display: "block", marginBottom: "7px" }}>
-              Llave para identificar el cobro (opcional)
+              Llave para identificar el cobro
             </label>
-            <select
-              value={selectedKey}
-              onChange={function (e) { setSelectedKey(e.target.value); }}
-              style={inputStyle}
-              disabled={keysLoading}
-            >
-              <option value="">{keysLoading ? "Cargando llaves..." : "Sin llave - cobro generico"}</option>
-              {keys.map(function (k) {
-                const atK = k.key_value.startsWith("@") ? k.key_value : "@" + k.key_value;
-                const label = k.reference ? atK + " (" + k.reference + ")" : atK;
-                return (
-                  <option key={k.id} value={k.key_value}>
-                    {label}
-                  </option>
-                );
-              })}
-            </select>
-            {keys.length === 0 && !keysLoading ? (
-              <div style={{ fontSize: "11px", color: "var(--t3)", marginTop: "4px" }}>
-                No tienes llaves creadas. Ve a Registrar llave para crear una y organizar tus cobros.
+            {keysLoading ? (
+              <div style={{ fontSize: "12.5px", color: "var(--t3)" }}>Cargando llave...</div>
+            ) : keys.length === 1 ? (
+              // Caso normal: una sola billetera COP por cliente — se usa
+              // directamente, sin selector.
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 12px", background: "var(--elevated)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", fontFamily: "var(--mono)", fontSize: "13px", color: "var(--t1)" }}>
+                <i className="ti ti-key" style={{ color: "var(--accent)" }} />
+                {keys[0].key_value.startsWith("@") ? keys[0].key_value : "@" + keys[0].key_value}
               </div>
-            ) : null}
+            ) : keys.length === 0 ? (
+              <div style={{ fontSize: "12.5px", color: "var(--t3)" }}>
+                No tienes una billetera creada todavía. Ve a "Mis billeteras" para crear una antes de generar cobros.
+              </div>
+            ) : (
+              // Caso legado — más de una llave activa.
+              <select
+                value={selectedKey}
+                onChange={function (e) { setSelectedKey(e.target.value); }}
+                style={inputStyle}
+              >
+                <option value="">Sin llave - cobro generico</option>
+                {keys.map(function (k) {
+                  const atK = k.key_value.startsWith("@") ? k.key_value : "@" + k.key_value;
+                  const label = k.reference ? atK + " (" + k.reference + ")" : atK;
+                  return (
+                    <option key={k.id} value={k.key_value}>
+                      {label}
+                    </option>
+                  );
+                })}
+              </select>
+            )}
           </div>
 
           <Input
@@ -501,9 +556,9 @@ export const CreateLinkModal: React.FC<Props> = ({ isOpen, onClose, onToast }) =
               </button>
             ) : null}
             {result.qrImage ? (
-              <a href={result.qrImage} download={downloadName} style={downloadQrStyle}>
+              <button onClick={handleDownloadQr} style={downloadQrStyle}>
                 Descargar QR
-              </a>
+              </button>
             ) : null}
           </div>
         </React.Fragment>

@@ -35,7 +35,39 @@ interface TxRow {
   concept: string;
   status: string;
   ben_name: string | null;
+  payer_name: string | null;
+  account_type: string | null;
+  payment_method: string | null;
+  comision_total: number | null;
   created_at: string;
+}
+
+// Nombre a mostrar según el tipo de movimiento — mismo criterio que en
+// Mis billeteras / Estado de Cuenta.
+function counterpartyName(t: TxRow): string | null {
+  return t.type === "charge" ? t.payer_name : t.ben_name;
+}
+
+// Concepto automático según el producto — mismo criterio que en Mis
+// billeteras / Estado de Cuenta.
+function conceptLabel(t: TxRow): string {
+  if (t.type === "payout") {
+    return t.account_type === "Bre-B" ? "Dispersión Bre-B" : "Dispersión ACH";
+  }
+
+  const raw = `${t.payment_method ?? ""} ${t.concept ?? ""}`.toUpperCase();
+  const isQr = raw.includes("QR");
+  const isStatic = raw.includes("STATIC") || raw.includes("ESTATIC") || raw.includes("ESTÁTIC");
+
+  if (raw.includes("NEQUI")) return "Recaudo Nequi Push";
+  if (isQr && isStatic) return "Recaudo QR Estático Bre-B";
+  if (isQr) return "Recaudo QR dinámico Bre-B";
+  if (raw.includes("BREB") || raw.includes("BRE-B") || raw.includes("MOVII")) return "Recaudo llave Bre-B";
+  if (t.payment_method) {
+    const method = t.payment_method.toLowerCase();
+    return "Recaudo " + method.charAt(0).toUpperCase() + method.slice(1);
+  }
+  return "Recaudo";
 }
 
 interface Metrics {
@@ -69,7 +101,7 @@ export const HomeView: React.FC<Props> = ({ fmt, onToast }) => {
       // 1. Transacciones
       let q = supabase
         .from("bepay_transactions")
-        .select("id, type, amount, concept, status, ben_name, created_at")
+        .select("id, type, amount, concept, status, ben_name, payer_name, account_type, payment_method, comision_total, created_at")
         .order("created_at", { ascending: false })
         .limit(200);
       if (!isAdmin) q = q.eq("user_id", user.id);
@@ -315,8 +347,8 @@ export const HomeView: React.FC<Props> = ({ fmt, onToast }) => {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
               <thead>
                 <tr>
-                  {["Fecha", "Tipo", "Descripción", "Monto", "Estado"].map((h) => (
-                    <th key={h} style={{ padding: "9px 16px", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".5px", color: "var(--t3)", borderBottom: "1px solid var(--border)", textAlign: h === "Monto" ? "right" : "left" }}>
+                  {["Fecha", "Tipo", "Concepto", "De / Para", "Monto", "Comisión", "Estado"].map((h) => (
+                    <th key={h} style={{ padding: "9px 16px", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".5px", color: "var(--t3)", borderBottom: "1px solid var(--border)", textAlign: h === "Monto" || h === "Comisión" ? "right" : "left" }}>
                       {h}
                     </th>
                   ))}
@@ -350,11 +382,17 @@ export const HomeView: React.FC<Props> = ({ fmt, onToast }) => {
                           {isCharge ? "Cobro" : "Dispersión"}
                         </div>
                       </td>
-                      <td style={{ padding: "12px 16px", color: "var(--t1)", maxWidth: "240px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {t.ben_name ?? t.concept ?? "—"}
+                      <td style={{ padding: "12px 16px", color: "var(--t1)", fontWeight: 500, maxWidth: "220px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {conceptLabel(t)}
+                      </td>
+                      <td style={{ padding: "12px 16px", color: "var(--t1)", maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {counterpartyName(t) ?? "—"}
                       </td>
                       <td style={{ padding: "12px 16px", textAlign: "right", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: isCharge ? "var(--success)" : "var(--error)" }}>
                         {isCharge ? "+" : "-"}{fmt(t.amount)}
+                      </td>
+                      <td style={{ padding: "12px 16px", textAlign: "right", color: "var(--t3)", fontSize: "12px", fontVariantNumeric: "tabular-nums" }}>
+                        {t.comision_total ? fmt(t.comision_total) : "—"}
                       </td>
                       <td style={{ padding: "12px 16px" }}>
                         <span style={{ display: "inline-flex", alignItems: "center", padding: "2px 8px", borderRadius: "20px", fontSize: "11px", fontWeight: 500, color: statusColor, background: statusBg }}>

@@ -2,8 +2,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuthStore } from "../store/authStore";
-import { useBankAccounts } from "../hooks/useBankAccounts";
-import { AddBankAccountModal } from "../components/AddBankAccountModal";
+import { getBanks } from "../lib/bepayClient";
 import { StatusBadge } from "../components/ui/StatusBadge";
 import { Modal } from "../components/ui/Modal";
 import type { ToastType } from "../types";
@@ -12,7 +11,6 @@ interface Props {
   onToast: (type: ToastType, title: string, msg: string) => void;
 }
 
-type Tab = "mias" | "beneficiarios";
 type AccountKind = "Bre-B" | "Ahorros" | "Corriente";
 
 // ── Tipos beneficiarios ─────────────────────────────────────────────
@@ -50,7 +48,9 @@ interface RawBenRow {
   beneficiary_accounts: BenCuenta[] | null;
 }
 
-const BANCOS = ["Bancolombia", "Davivienda", "Banco de Bogotá", "BBVA Colombia", "Scotiabank Colpatria", "Banco Popular", "Nequi", "Daviplata", "Otro"];
+// Lista de respaldo mientras carga el catálogo real de bancos de Bepay, o
+// si la llamada falla — así el formulario nunca se queda sin opciones.
+const BANCOS_FALLBACK = ["Bancolombia", "Davivienda", "Banco de Bogotá", "BBVA Colombia", "Scotiabank Colpatria", "Banco Popular", "Nequi", "Daviplata", "Otro"];
 
 // ── Helpers puros, fuera del componente ──────────────────────────────
 function iniciales(nombre: string): string {
@@ -107,26 +107,31 @@ const labelStyle: React.CSSProperties = {
 
 export const CuentasView: React.FC<Props> = ({ onToast }) => {
   const { user } = useAuthStore();
-  const [tab, setTab] = useState<Tab>("mias");
 
-  // ══════════════════════════════════════════════════════════════
-  // MIS CUENTAS — cuentas bancarias propias del usuario
-  // ══════════════════════════════════════════════════════════════
-  const { accounts, loading: accLoading, setDefault, deleteAccount } = useBankAccounts();
-  const [modalOpen, setModalOpen] = useState(false);
-
-  const handleSetDefault = async (id: string) => {
-    const err = await setDefault(id);
-    if (err) onToast("error", "Error", err);
-    else onToast("ok", "Actualizado", "Cuenta marcada como predeterminada");
-  };
-
-  const handleDeleteAcc = async (id: string) => {
-    if (!confirm("¿Eliminar esta cuenta bancaria?")) return;
-    const err = await deleteAccount(id);
-    if (err) onToast("error", "Error", err);
-    else onToast("ok", "Eliminada", "Cuenta bancaria eliminada");
-  };
+  // ── Catálogo real de bancos (Bepay) para las cuentas Ahorro/Corriente ──
+  const [bancos, setBancos] = useState<string[]>([]);
+  const [bancosLoading, setBancosLoading] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.resolve().then(async () => {
+      try {
+        const res = await getBanks(200);
+        if (cancelled) return;
+        const list = Array.isArray(res?.data)
+          ? (res.data as Array<Record<string, unknown>>)
+              .map((b) => String(b.name ?? b.nombre ?? b.bank_name ?? "").trim())
+              .filter(Boolean)
+          : [];
+        setBancos(list);
+      } catch {
+        if (!cancelled) setBancos([]);
+      } finally {
+        if (!cancelled) setBancosLoading(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, []);
+  const bancoOptions = bancos.length > 0 ? bancos : BANCOS_FALLBACK;
 
   // ══════════════════════════════════════════════════════════════
   // BENEFICIARIOS — personas a quienes se les envía dinero
@@ -147,9 +152,12 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
     nombre: "",
     celular: "",
     correo: "",
-    llave: "",
   });
 
+  // El tipo/banco/número/llave de la PRIMERA cuenta se piden junto con el
+  // beneficiario — antes esto quedaba fijo en Bre-B/Ramplix sin importar lo
+  // que el usuario necesitara. Se reutiliza para el modal de "agregar otra
+  // cuenta" a un beneficiario ya existente.
   const [ctaForm, setCtaForm] = useState<{
     tipo: AccountKind | "";
     banco: string;
@@ -224,8 +232,12 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
   };
 
   const handleSaveBen = async () => {
-    if (!bForm.tipodoc || !bForm.numdoc || !bForm.nombre || !bForm.llave) {
-      onToast("error", "Campos requeridos", "Completa todos los campos obligatorios");
+    const cuentaValida =
+      ctaForm.tipo === "Bre-B" ? !!ctaForm.llave.trim() :
+      ctaForm.tipo === "Ahorros" || ctaForm.tipo === "Corriente" ? !!ctaForm.banco && !!ctaForm.num.trim() :
+      false;
+    if (!bForm.tipodoc || !bForm.numdoc || !bForm.nombre || !ctaForm.tipo || !cuentaValida) {
+      onToast("error", "Campos requeridos", "Completa todos los campos obligatorios, incluyendo el tipo de cuenta");
       return;
     }
     if (!user) return;
@@ -249,16 +261,17 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
 
       const { error: ctaErr } = await supabase.from("beneficiary_accounts").insert({
         beneficiary_id: benData.id,
-        account_type: "Bre-B",
-        bank_name: "Ramplix",
-        account_key: bForm.llave,
+        account_type: ctaForm.tipo,
+        bank_name: ctaForm.tipo === "Bre-B" ? "Ramplix" : ctaForm.banco,
+        account_key: ctaForm.tipo === "Bre-B" ? ctaForm.llave : ctaForm.num,
         is_active: true,
       });
 
       if (ctaErr) throw new Error(ctaErr.message);
 
       onToast("ok", "Beneficiario guardado", bForm.nombre);
-      setBForm({ tipodoc: "CC", numdoc: "", nombre: "", celular: "", correo: "", llave: "" });
+      setBForm({ tipodoc: "CC", numdoc: "", nombre: "", celular: "", correo: "" });
+      setCtaForm({ tipo: "", banco: "", num: "", llave: "" });
       setNewBenOpen(false);
       await loadBens();
     } catch (err: unknown) {
@@ -326,179 +339,15 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
     );
   });
 
-  const tabButtonStyle = (active: boolean): React.CSSProperties => ({
-    padding: "10px 18px",
-    fontSize: "13.5px",
-    fontWeight: 600,
-    border: "none",
-    background: "none",
-    cursor: "pointer",
-    color: active ? "var(--accent)" : "var(--t3)",
-    borderBottom: active ? "2px solid var(--accent)" : "2px solid transparent",
-    display: "flex",
-    alignItems: "center",
-    gap: "7px",
-  });
-
   return (
     <div style={{ animation: "fadeUp .3s ease" }}>
       {/* Encabezado */}
       <div style={{ marginBottom: "18px" }}>
-        <h1 style={{ fontSize: "23px", fontWeight: 700, letterSpacing: "-.4px", color: "var(--t1)" }}>Cuentas</h1>
-        <p style={{ color: "var(--t2)", fontSize: "13.5px", marginTop: "3px" }}>Gestiona tus cuentas bancarias y beneficiarios de dispersión</p>
+        <h1 style={{ fontSize: "23px", fontWeight: 700, letterSpacing: "-.4px", color: "var(--t1)" }}>Beneficiarios</h1>
+        <p style={{ color: "var(--t2)", fontSize: "13.5px", marginTop: "3px" }}>Gestiona los beneficiarios de tus dispersiones</p>
       </div>
 
-      {/* Pestañas */}
-      <div style={{ display: "flex", gap: "4px", borderBottom: "1px solid var(--border)", marginBottom: "20px" }}>
-        <button onClick={() => setTab("mias")} style={tabButtonStyle(tab === "mias")}>
-          <i className="ti ti-building-bank" style={{ fontSize: "16px" }} />
-          Mis Cuentas
-          <span
-            style={{
-              fontSize: "11px",
-              fontWeight: 700,
-              background: tab === "mias" ? "var(--accent-dim)" : "var(--elevated)",
-              color: tab === "mias" ? "var(--accent)" : "var(--t3)",
-              borderRadius: "20px",
-              padding: "1px 8px",
-            }}
-          >
-            {accounts.length}
-          </span>
-        </button>
-        <button onClick={() => setTab("beneficiarios")} style={tabButtonStyle(tab === "beneficiarios")}>
-          <i className="ti ti-users" style={{ fontSize: "16px" }} />
-          Beneficiarios
-          <span
-            style={{
-              fontSize: "11px",
-              fontWeight: 700,
-              background: tab === "beneficiarios" ? "var(--accent-dim)" : "var(--elevated)",
-              color: tab === "beneficiarios" ? "var(--accent)" : "var(--t3)",
-              borderRadius: "20px",
-              padding: "1px 8px",
-            }}
-          >
-            {bens.length}
-          </span>
-        </button>
-      </div>
-
-      {/* ══════════════════ TAB: MIS CUENTAS ══════════════════ */}
-      {tab === "mias" ? (
-        <React.Fragment>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
-            <p style={{ color: "var(--t3)", fontSize: "12.5px" }}>Cuentas propias verificadas para recibir tus dispersiones</p>
-            <button
-              onClick={() => setModalOpen(true)}
-              style={{ padding: "9px 16px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: "var(--radius-sm)", fontWeight: 600, fontSize: "13px", cursor: "pointer" }}
-            >
-              + Agregar cuenta
-            </button>
-          </div>
-
-          {accLoading ? (
-            <div style={{ textAlign: "center", padding: "60px", color: "var(--t3)" }}>Cargando…</div>
-          ) : accounts.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "60px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)" }}>
-              <div style={{ width: "54px", height: "54px", borderRadius: "14px", background: "var(--elevated)", display: "grid", placeItems: "center", margin: "0 auto 16px", color: "var(--t2)" }}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" width="24" height="24">
-                  <rect x="3" y="6" width="18" height="13" rx="2" />
-                  <path d="M3 10h18M7 15h3" strokeLinecap="round" />
-                </svg>
-              </div>
-              <h4 style={{ fontSize: "15px", color: "var(--t1)", marginBottom: "6px" }}>Sin cuentas registradas</h4>
-              <p style={{ color: "var(--t3)", fontSize: "13px" }}>Agrega una cuenta bancaria para empezar a dispersar fondos.</p>
-            </div>
-          ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "16px" }}>
-              {accounts.map((acc) => (
-                <div
-                  key={acc.id}
-                  style={{
-                    background: "var(--surface)",
-                    border: acc.is_default ? "1.5px solid var(--accent)" : "1px solid var(--border)",
-                    borderRadius: "var(--radius)",
-                    padding: "18px",
-                    boxShadow: "var(--shadow)",
-                    position: "relative",
-                  }}
-                >
-                  {acc.is_default ? (
-                    <span
-                      style={{
-                        position: "absolute",
-                        top: "14px",
-                        right: "14px",
-                        fontSize: "10.5px",
-                        fontWeight: 700,
-                        padding: "2px 8px",
-                        borderRadius: "6px",
-                        background: "var(--accent-dim)",
-                        color: "var(--accent)",
-                      }}
-                    >
-                      PREDETERMINADA
-                    </span>
-                  ) : null}
-
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "14px" }}>
-                    <div style={{ width: "40px", height: "40px", borderRadius: "10px", background: "var(--elevated)", display: "grid", placeItems: "center", color: "var(--accent)", flexShrink: 0 }}>
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20">
-                        <rect x="3" y="6" width="18" height="13" rx="2" />
-                        <path d="M3 10h18M7 15h3" strokeLinecap="round" />
-                      </svg>
-                    </div>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: "15px", color: "var(--t1)" }}>{acc.bank_name}</div>
-                      <div style={{ fontSize: "12.5px", color: "var(--t3)" }}>
-                        {acc.account_type === "ahorros" ? "Ahorros" : "Corriente"} · ****{acc.account_number.slice(-4)}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style={{ fontSize: "13px", color: "var(--t2)", marginBottom: "6px" }}>{acc.account_holder_name}</div>
-
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
-                    {acc.is_verified ? (
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", fontSize: "11.5px", fontWeight: 600, color: "var(--success)", background: "var(--success-dim)", padding: "3px 9px", borderRadius: "7px" }}>
-                        ✓ Verificada
-                      </span>
-                    ) : (
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", fontSize: "11.5px", fontWeight: 600, color: "var(--warning)", background: "var(--warning-dim)", padding: "3px 9px", borderRadius: "7px" }}>
-                        En verificación
-                      </span>
-                    )}
-                  </div>
-
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    {!acc.is_default ? (
-                      <button
-                        onClick={() => handleSetDefault(acc.id)}
-                        style={{ flex: 1, padding: "7px", fontSize: "12.5px", fontWeight: 600, border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--surface)", color: "var(--t2)", cursor: "pointer" }}
-                      >
-                        Hacer predeterminada
-                      </button>
-                    ) : null}
-                    <button
-                      onClick={() => handleDeleteAcc(acc.id)}
-                      style={{ padding: "7px 12px", fontSize: "12.5px", fontWeight: 600, border: "1px solid rgba(239,68,68,.25)", borderRadius: "var(--radius-sm)", background: "var(--error-dim)", color: "var(--error)", cursor: "pointer" }}
-                    >
-                      Eliminar
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <AddBankAccountModal isOpen={modalOpen} onClose={() => setModalOpen(false)} onToast={onToast} />
-        </React.Fragment>
-      ) : null}
-
-      {/* ══════════════════ TAB: BENEFICIARIOS ══════════════════ */}
-      {tab === "beneficiarios" ? (
-        <React.Fragment>
+      <React.Fragment>
           {/* Stats */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginBottom: "16px" }}>
             {[
@@ -530,7 +379,10 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
               <i className="ti ti-refresh" />
             </button>
             <button
-              onClick={() => setNewBenOpen(true)}
+              onClick={() => {
+                setCtaForm({ tipo: "", banco: "", num: "", llave: "" });
+                setNewBenOpen(true);
+              }}
               style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "8px 14px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: "var(--radius-sm)", fontWeight: 600, fontSize: "13px", cursor: "pointer" }}
             >
               <i className="ti ti-plus" />
@@ -738,14 +590,66 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
               </div>
             </div>
             <div style={{ height: "1px", background: "var(--border)", margin: "14px 0" }} />
-            <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--t3)", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: "10px", paddingBottom: "7px", borderBottom: "1px solid var(--border)" }}>Llave Bre-B</div>
-            <div>
+            <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--t3)", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: "10px", paddingBottom: "7px", borderBottom: "1px solid var(--border)" }}>Cuenta de dispersión</div>
+            <div style={{ marginBottom: "14px" }}>
               <label style={labelStyle}>
-                Llave Bre-B <span style={{ color: "var(--accent)" }}>*</span>
+                Tipo de Cuenta <span style={{ color: "var(--accent)" }}>*</span>
               </label>
-              <input value={bForm.llave} onChange={(e) => bf("llave")(e.target.value)} placeholder="Ej. nombre@breb.co" style={inputStyle} />
-              <div style={{ fontSize: "11px", color: "var(--t3)", marginTop: "4px" }}>Ingresa la llave — consultaremos el banco automáticamente</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "8px" }}>
+                {(
+                  [
+                    { tipo: "Ahorros" as const, icon: "ti-piggy-bank" },
+                    { tipo: "Corriente" as const, icon: "ti-building-bank" },
+                    { tipo: "Bre-B" as const, icon: "ti-key" },
+                  ]
+                ).map((opt) => (
+                  <button
+                    key={opt.tipo}
+                    onClick={() => cf("tipo")(opt.tipo)}
+                    style={{
+                      border: "1.5px solid " + (ctaForm.tipo === opt.tipo ? "var(--accent)" : "var(--border)"),
+                      background: ctaForm.tipo === opt.tipo ? "var(--accent-dim)" : "transparent",
+                      borderRadius: "var(--radius-sm)",
+                      padding: "10px 8px",
+                      cursor: "pointer",
+                      textAlign: "center",
+                    }}
+                  >
+                    <i className={"ti " + opt.icon} style={{ fontSize: "17px", color: ctaForm.tipo === opt.tipo ? "var(--accent)" : "var(--t3)", display: "block", marginBottom: "4px" }} />
+                    <div style={{ fontSize: "11px", fontWeight: 500, color: ctaForm.tipo === opt.tipo ? "var(--accent)" : "var(--t3)" }}>{opt.tipo}</div>
+                  </button>
+                ))}
+              </div>
             </div>
+            {ctaForm.tipo === "Ahorros" || ctaForm.tipo === "Corriente" ? (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <div>
+                  <label style={labelStyle}>
+                    Banco <span style={{ color: "var(--accent)" }}>*</span>
+                  </label>
+                  <select value={ctaForm.banco} onChange={(e) => cf("banco")(e.target.value)} style={inputStyle} disabled={bancosLoading}>
+                    <option value="">{bancosLoading ? "Cargando bancos..." : "Selecciona..."}</option>
+                    {bancoOptions.map((b) => (
+                      <option key={b}>{b}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>
+                    Número <span style={{ color: "var(--accent)" }}>*</span>
+                  </label>
+                  <input value={ctaForm.num} onChange={(e) => cf("num")(e.target.value)} placeholder="Ej. 4830-0005-5400" style={inputStyle} />
+                </div>
+              </div>
+            ) : null}
+            {ctaForm.tipo === "Bre-B" ? (
+              <div>
+                <label style={labelStyle}>
+                  Llave Bre-B <span style={{ color: "var(--accent)" }}>*</span>
+                </label>
+                <input value={ctaForm.llave} onChange={(e) => cf("llave")(e.target.value)} placeholder="Ej. nombre@breb.co" style={inputStyle} />
+              </div>
+            ) : null}
           </Modal>
 
           {/* Modal agregar cuenta */}
@@ -802,9 +706,9 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
                   <label style={labelStyle}>
                     Banco <span style={{ color: "var(--accent)" }}>*</span>
                   </label>
-                  <select value={ctaForm.banco} onChange={(e) => cf("banco")(e.target.value)} style={inputStyle}>
-                    <option value="">Selecciona...</option>
-                    {BANCOS.map((b) => (
+                  <select value={ctaForm.banco} onChange={(e) => cf("banco")(e.target.value)} style={inputStyle} disabled={bancosLoading}>
+                    <option value="">{bancosLoading ? "Cargando bancos..." : "Selecciona..."}</option>
+                    {bancoOptions.map((b) => (
                       <option key={b}>{b}</option>
                     ))}
                   </select>
@@ -826,8 +730,7 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
               </div>
             ) : null}
           </Modal>
-        </React.Fragment>
-      ) : null}
+      </React.Fragment>
     </div>
   );
 };
