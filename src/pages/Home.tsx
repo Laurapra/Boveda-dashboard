@@ -117,12 +117,26 @@ export const HomeView: React.FC<Props> = ({ fmt, onToast }) => {
       const { data: txns } = await q;
       const rows = (txns ?? []) as TxRow[];
 
-      // 2. Saldo real desde Bepay (solo admin)
+      // 2. Saldo — admin ve el saldo real y global de la cuenta Bepay;
+      // usuarios normales ven SU saldo propio (profiles.balance), que es la
+      // fuente de verdad de cuánto pueden gastar. Antes esto se quedaba en 0
+      // para no-admin (nunca se llenaba) y la tarjeta "Saldo disponible"
+      // caía a mostrar "recibido este mes" en su lugar — mostrando un
+      // número que no era el saldo real del usuario.
       let saldo = 0;
       if (isAdmin) {
         try {
           const res = await getBepayBalance();
           saldo = res?.data?.balance ?? 0;
+        } catch { /* silencioso */ }
+      } else {
+        try {
+          const { data: prof } = await supabase
+            .from("profiles")
+            .select("balance")
+            .eq("id", user.id)
+            .single();
+          saldo = Number(prof?.balance ?? 0);
         } catch { /* silencioso */ }
       }
 
@@ -273,7 +287,7 @@ export const HomeView: React.FC<Props> = ({ fmt, onToast }) => {
               {isAdmin ? "Saldo real · Bepay" : "Saldo disponible · COP"}
             </div>
             <div style={{ fontSize: "38px", fontWeight: 700, color: "var(--t1)", lineHeight: 1, marginBottom: "6px", letterSpacing: "-.5px", fontVariantNumeric: "tabular-nums" }}>
-              {loading ? "—" : fmt(saldoAnim || recAnim)}
+              {loading ? "—" : fmt(saldoAnim)}
             </div>
             <div style={{ fontSize: "11px", color: "var(--t3)" }}>
               {isAdmin ? "Balance en tiempo real · Bepay" : "Billetera activa · Bre-B · Ramplix"}

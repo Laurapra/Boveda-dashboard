@@ -149,13 +149,22 @@ serve(async (req) => {
         verifiedData.details?.data?.Creditor?.PartyIdentifier ??
         null;
 
+      // OJO: Bepay SIEMPRE manda esta llave en minúsculas (confirmado con
+      // el caso real del 9 ago: candidateKey="@beramplix011"), pero nosotros
+      // la guardamos en mayúsculas al registrarla (create_virtual_key arma
+      // "@BE" + "RAMPLIXNNN"). Un ".eq" es sensible a mayúsculas/minúsculas,
+      // así que NUNCA emparejaba — el pago llegaba a Bepay, el webhook se
+      // disparaba bien, pero como no encontraba la llave la transacción se
+      // descartaba en silencio (sin fila, sin abono, sin aviso). Se cambia a
+      // ".ilike" (case-insensitive) para que "@beramplix011" empareje con
+      // "@BERAMPLIX011" sin importar cómo venga cada lado.
       let matchedKey: { key_value: string; user_id: string } | null = null;
       if (candidateKey) {
         const plain = String(candidateKey).replace(/^@/, "");
         const { data: keyRow } = await adminClient
           .from("breb_keys")
           .select("key_value, user_id")
-          .or(`key_value.eq.${plain},key_value.eq.@${plain}`)
+          .or(`key_value.ilike.${plain},key_value.ilike.@${plain}`)
           .limit(1)
           .maybeSingle();
         matchedKey = keyRow ?? null;
