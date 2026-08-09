@@ -120,14 +120,17 @@ serve(async (req) => {
     // ── Buscar la transacción local por bepay_ide ──────────────────
     let { data: txRow } = await adminClient
       .from("bepay_transactions")
-      .select("id, user_id, status")
+      .select("id, user_id")
       .eq("bepay_ide", ide)
       .single();
 
-    // Se guarda antes de cualquier reasignación de txRow (rama "no existe
-    // fila local" de abajo) — es lo que decide si el abono a saldo ya se
-    // hizo antes (idempotencia ante webhooks duplicados/reintentos).
-    const previousStatus = txRow?.status ?? null;
+    // Si esta llamada gana la carrera para insertar la fila (o para
+    // transicionarla de no-APPROVED a APPROVED), es la única que debe
+    // abonar el saldo y sumar al total_received de la llave — se decide más
+    // abajo, nunca leyendo un status "de antes" (eso es lo que permitía que
+    // dos entregas concurrentes del mismo webhook abonaran dos veces).
+    let creditEligible = false;
+    let isNewRow = false;
 
     if (!txRow) {
       // No existe fila local — esto pasa cuando alguien transfiere DIRECTO
@@ -170,6 +173,20 @@ serve(async (req) => {
       }
 
       const amount = Number(verifiedData.transaction_total ?? payload.transaction_total ?? 0);
+
+      // Misma comisión fija que usa create_link/create_qr — sin esto, los
+      // recaudos que llegan DIRECTO a la llave (sin pasar por un link/QR
+      // generado por nosotros) quedaban con comision_total en null: el saldo
+      // sí se abonaba neto más abajo, pero la columna "Comisión" salía vacía
+      // en Mis billeteras/Estado de Cuenta y el monto se veía como si no se
+      // hubiera descontado nada.
+      const { data: recvProfile } = await adminClient
+        .from("profiles")
+        .select("tarifa_recibir")
+        .eq("id", matchedKey.user_id)
+        .single();
+      const comisionRecaudo = recvProfile?.tarifa_recibir ?? 1190;
+
       const { data: inserted, error: insertErr } = await adminClient
         .from("bepay_transactions")
         .insert({
@@ -183,43 +200,88 @@ serve(async (req) => {
           payment_method: payload.paymentmethod ?? "breb",
           payer_name: payerName,
           payer_document: payerDocument,
+          tarifa_aplicada: comisionRecaudo,
+          comision_total: comisionRecaudo,
           raw_response: verifiedData,
         })
         .select("id, user_id")
         .single();
 
-      if (insertErr || !inserted) {
-        console.error("[bepay-charge-webhook] Error creando transacción nueva:", insertErr?.message);
-        return new Response(JSON.stringify({ received: true, matched: false, error: insertErr?.message }), {
-          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+      if (insertErr) {
+        // 23505 = choque con la restricción UNIQUE(bepay_ide, type) — otra
+        // entrega concurrente del mismo webhook ya insertó esta fila
+        // primero (dos pagos directos a la llave casi simultáneos para el
+        // mismo ide). En vez de fallar, se recupera esa fila y se sigue
+        // igual que si ya hubiera existido desde el principio — así ninguna
+        // de las dos entregas se pierde el abono si el estado cambió entre
+        // ambas verificaciones, pero tampoco se duplica.
+        if (insertErr.code === "23505") {
+          const { data: existing } = await adminClient
+            .from("bepay_transactions")
+            .select("id, user_id")
+            .eq("bepay_ide", ide)
+            .eq("type", "charge")
+            .single();
+          if (!existing) {
+            console.error("[bepay-charge-webhook] Conflicto de inserción pero no se encontró la fila para ide:", ide);
+            return new Response(JSON.stringify({ received: true, matched: false, error: "insert_conflict_not_found" }), {
+              status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+          txRow = existing;
+        } else {
+          console.error("[bepay-charge-webhook] Error creando transacción nueva:", insertErr.message);
+          return new Response(JSON.stringify({ received: true, matched: false, error: insertErr.message }), {
+            status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      } else {
+        txRow = inserted;
+        isNewRow = true;
+        // Insert fresco — como el UNIQUE(bepay_ide, type) garantiza que solo
+        // una entrega puede haber ganado esta inserción, esta es
+        // automáticamente la única que debe abonar si quedó APPROVED.
+        creditEligible = finalStatus === "APPROVED";
       }
+    }
 
-      txRow = inserted;
-      // El incremento de total_received para llaves lo hace el bloque
-      // compartido de abajo (usa txRow.id, ya sea fila nueva o existente) —
-      // no duplicar aquí.
-    } else {
-      // ── Actualiza con el estado verificado ──────────────────────────
-      const { error: updateErr } = await adminClient
+    if (!isNewRow) {
+      // Fila ya existía de antes, o se acaba de recuperar tras un conflicto
+      // de inserción — actualiza los campos descriptivos siempre (no mueven
+      // dinero, no hay riesgo de carrera en pisarlos varias veces).
+      await adminClient
         .from("bepay_transactions")
         .update({
-          status: finalStatus,
           payment_method: payload.paymentmethod ?? null,
           payer_name: payerName,
           payer_document: payerDocument,
           raw_response: verifiedData,
           updated_at: new Date().toISOString(),
+          ...(finalStatus !== "APPROVED" ? { status: finalStatus } : {}),
         })
         .eq("id", txRow.id);
 
-      if (updateErr) {
-        console.error("[bepay-charge-webhook] Error actualizando:", updateErr.message);
+      if (finalStatus === "APPROVED") {
+        // Transición atómica y condicional — como mucho una llamada
+        // concurrente logra pasar el status de no-APPROVED a APPROVED aquí;
+        // esa es la única que abona. Reemplaza el chequeo de "status
+        // anterior" leído por separado, que era la causa real de que dos
+        // entregas del webhook (o el webhook corriendo junto con una
+        // sincronización) pudieran abonar el mismo recaudo dos veces.
+        const { data: won } = await adminClient
+          .from("bepay_transactions")
+          .update({ status: "APPROVED" })
+          .eq("id", txRow.id)
+          .neq("status", "APPROVED")
+          .select("id");
+        creditEligible = !!(won && won.length > 0);
       }
     }
 
-    // Si se aprobó y tiene llave virtual asociada, incrementa el total recibido
-    if (finalStatus === "APPROVED") {
+    // Si se aprobó Y esta llamada ganó la transición, incrementa el total
+    // recibido de la llave y abona el saldo — nunca dos veces para el mismo
+    // recaudo, sin importar cuántas entregas duplicadas lleguen.
+    if (finalStatus === "APPROVED" && creditEligible) {
       const { data: txFull } = await adminClient
         .from("bepay_transactions")
         .select("account_key, amount, user_id, comision_total, type")
@@ -235,10 +297,12 @@ serve(async (req) => {
       }
 
       // ── Abonar el neto (monto - comisión) al saldo del cliente ────────
-      // Solo si ANTES no estaba ya en APPROVED — así un webhook duplicado o
-      // un reintento de Bepay no abona dos veces la misma transacción.
-      // Ej: recauda $10.000, comisión $1.190 -> se abonan $8.810.
-      if (txFull && txFull.type === "charge" && previousStatus !== "APPROVED") {
+      // creditEligible ya garantizó (de forma atómica) que esta es la única
+      // llamada que ganó la transición a APPROVED para este recaudo — un
+      // webhook duplicado o un reintento de Bepay ya no puede abonar dos
+      // veces la misma transacción. Ej: recauda $10.000, comisión $1.190 ->
+      // se abonan $8.810.
+      if (txFull && txFull.type === "charge") {
         let comision = txFull.comision_total;
         if (comision === null || comision === undefined) {
           // Cobros que llegaron directo a la llave (sin pasar por

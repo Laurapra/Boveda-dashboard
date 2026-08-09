@@ -365,20 +365,66 @@ serve(async (req) => {
         if (statusResult.data && statusResult.data.status) {
           const { data: txRow } = await adminClient
             .from("bepay_transactions")
-            .select("id, user_id, status, amount, comision_total")
+            .select("id, user_id, amount, comision_total")
             .eq("bepay_ide", payoutId)
             .eq("type", "payout")
             .maybeSingle();
 
           if (txRow) {
-            // Reintegra saldo si pasó a rechazada — antes de sobreescribir el status.
+            // Escribe el status y reintegra saldo si aplica — todo dentro de
+            // applyPayoutStatusTransition, de forma atómica (ver comentario
+            // en _shared/balance.ts).
             await applyPayoutStatusTransition(adminClient, txRow, statusResult.data.status);
-            await adminClient.from("bepay_transactions")
-              .update({ status: statusResult.data.status, updated_at: new Date().toISOString() })
-              .eq("id", txRow.id);
           }
         }
         result = statusResult;
+        break;
+      }
+
+      // ── Sincronizar MIS dispersiones pendientes (cualquier usuario) ──
+      // sync_pending_payouts (abajo) es solo para el admin y solo se dispara
+      // con el botón manual "Sincronizar" en el panel. Un usuario normal
+      // nunca lo ve, así que sus dispersiones se quedaban en PENDING para
+      // siempre aunque ya hubieran quedado completadas o rechazadas en
+      // Bepay — nada más las refrescaba. Esta versión, scoped a user_id,
+      // se llama automáticamente cada vez que el cliente abre Mis billeteras,
+      // Estado de Cuenta o Inicio, para que su propio estado se ponga al día
+      // sin depender de que un admin sincronice manualmente.
+      case "sync_my_payouts": {
+        const { data: myPending } = await adminClient
+          .from("bepay_transactions")
+          .select("id, bepay_ide, user_id, amount, comision_total")
+          .eq("type", "payout")
+          .eq("status", "PENDING")
+          .eq("user_id", user.id)
+          .limit(50);
+
+        let updated = 0;
+        let checked = 0;
+
+        for (const tx of myPending ?? []) {
+          if (!tx.bepay_ide) continue;
+          checked++;
+
+          try {
+            const res = await fetch(
+              BEPAY_BASE + "/payout/status/" + tx.bepay_ide + "/" + accountId,
+              { headers: { "Authorization": "Bearer " + token, "Accept": "application/json" } }
+            );
+            const statusJson = await res.json();
+
+            if (statusJson.data && statusJson.data.status && statusJson.data.status !== "PENDING") {
+              // Escribe el status y reintegra si aplica — atómico, ver
+              // _shared/balance.ts.
+              await applyPayoutStatusTransition(adminClient, tx, statusJson.data.status);
+              updated++;
+            }
+          } catch {
+            // Continúa con la siguiente aunque una falle
+          }
+        }
+
+        result = { success: true, checked, updated };
         break;
       }
 
@@ -388,7 +434,7 @@ serve(async (req) => {
 
         const { data: pending } = await adminClient
           .from("bepay_transactions")
-          .select("id, bepay_ide, user_id, amount, comision_total, status")
+          .select("id, bepay_ide, user_id, amount, comision_total")
           .eq("type", "payout")
           .eq("status", "PENDING")
           .limit(50);
@@ -408,11 +454,9 @@ serve(async (req) => {
             const statusJson = await res.json();
 
             if (statusJson.data && statusJson.data.status && statusJson.data.status !== "PENDING") {
-              // Reintegra saldo si pasó a rechazada — antes de sobreescribir el status.
+              // Escribe el status y reintegra si aplica — atómico, ver
+              // _shared/balance.ts.
               await applyPayoutStatusTransition(adminClient, tx, statusJson.data.status);
-              await adminClient.from("bepay_transactions")
-                .update({ status: statusJson.data.status, updated_at: new Date().toISOString() })
-                .eq("id", tx.id);
               updated++;
             }
           } catch {

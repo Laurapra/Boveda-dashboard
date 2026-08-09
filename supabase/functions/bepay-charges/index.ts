@@ -29,6 +29,13 @@ function sanitize(value: unknown, maxLen = 255): string {
   return clean;
 }
 
+// Vencimiento de los links/QR de cobro generados — a los 30 minutos dejan
+// de ser válidos localmente (se rechazan aunque Bepay todavía no haya dado
+// un estado final). No cancela el link del lado de Bepay — eso requeriría
+// un endpoint suyo que no tenemos confirmado — pero evita que nuestro
+// sistema los deje "vivos" indefinidamente en PENDING.
+const LINK_EXPIRATION_MS = 30 * 60 * 1000;
+
 function validateAmount(amount: unknown): number {
   const n = Number(amount);
   if (!Number.isInteger(n) || n < 1000) throw new Error("Monto mínimo: $1.000 COP");
@@ -261,6 +268,7 @@ serve(async (req) => {
             tarifa_aplicada: profile.tarifa_recibir,
             tarifa_variable: profile.tarifa_variable,
             comision_total: profile.tarifa_recibir,
+            expires_at: new Date(Date.now() + LINK_EXPIRATION_MS).toISOString(),
             raw_response: bepayResult.data,
           }).select().single();
 
@@ -315,6 +323,7 @@ serve(async (req) => {
             tarifa_aplicada: profile.tarifa_recibir,
             tarifa_variable: profile.tarifa_variable,
             comision_total: profile.tarifa_recibir,
+            expires_at: new Date(Date.now() + LINK_EXPIRATION_MS).toISOString(),
             raw_response: bepayResult.data,
           }).select().single();
 
@@ -339,7 +348,7 @@ serve(async (req) => {
 
         const { data: txOwner } = await userClient
           .from("bepay_transactions")
-          .select("id, user_id")
+          .select("id, user_id, status, expires_at, created_at")
           .eq("bepay_ide", ide)
           .single();
 
@@ -353,12 +362,27 @@ serve(async (req) => {
         );
         const statusResult = await res.json();
 
-        if (statusResult.data?.status) {
+        let finalStatus: string | undefined = statusResult.data?.status;
+
+        // Si Bepay todavía no dio un estado final (sigue PENDING o no
+        // respondió nada distinto) y el link/QR ya venció (30 min desde que
+        // se creó), se rechaza localmente aquí mismo — así alguien que
+        // consulta el estado de SU propio cobro ve "Rechazado" de inmediato
+        // en vez de esperar a que un admin sincronice. Nunca pisa un estado
+        // final que Bepay sí haya confirmado.
+        if (txOwner && txOwner.status === "PENDING" && (!finalStatus || finalStatus === "PENDING")) {
+          const expiresAt = txOwner.expires_at
+            ? new Date(txOwner.expires_at)
+            : new Date(new Date(txOwner.created_at).getTime() + LINK_EXPIRATION_MS);
+          if (Date.now() > expiresAt.getTime()) finalStatus = "REJECTED";
+        }
+
+        if (finalStatus) {
           await adminClient.from("bepay_transactions")
-            .update({ status: statusResult.data.status, raw_response: statusResult.data, updated_at: new Date().toISOString() })
+            .update({ status: finalStatus, raw_response: statusResult.data ?? null, updated_at: new Date().toISOString() })
             .eq("bepay_ide", ide);
 
-          if (statusResult.data.status === "APPROVED" && txOwner) {
+          if (finalStatus === "APPROVED" && txOwner) {
             const { data: txFull } = await adminClient
               .from("bepay_transactions")
               .select("account_key, amount, user_id")
@@ -371,6 +395,14 @@ serve(async (req) => {
                 p_amount:    txFull.amount,
               });
             }
+          }
+
+          // Si el vencimiento local fue lo que decidió el rechazo (Bepay no
+          // había mandado ese status todavía), se refleja en la respuesta
+          // para que el frontend no se quede mostrando "Pendiente" con un
+          // dato que ya no corresponde a lo que se guardó.
+          if (finalStatus === "REJECTED" && statusResult.data?.status !== "REJECTED") {
+            statusResult.data = { ...(statusResult.data ?? {}), status: "REJECTED" };
           }
         }
 
@@ -870,11 +902,9 @@ serve(async (req) => {
       case "sync_pending_charges": {
         if (profile.role !== "admin") throw new Error("No autorizado");
 
-        const THIRTY_MIN_MS = 30 * 60 * 1000;
-
         const { data: pending } = await adminClient
           .from("bepay_transactions")
-          .select("id, bepay_ide, user_id, created_at")
+          .select("id, bepay_ide, user_id, created_at, expires_at")
           .eq("type", "charge")
           .eq("status", "PENDING")
           .limit(50);
@@ -915,12 +945,16 @@ serve(async (req) => {
               }
               updated++;
             } else {
-              // Bepay sigue sin dar un estado final — solo si ya pasaron
-              // más de 30 min desde la creación se marca RECHAZADO local
-              // como fallback (los cobros nunca debitan saldo al crearse,
-              // así que rechazar aquí no requiere reintegrar nada).
-              const ageMs = Date.now() - new Date(tx.created_at).getTime();
-              if (ageMs > THIRTY_MIN_MS) {
+              // Bepay sigue sin dar un estado final — solo si ya pasó el
+              // vencimiento (expires_at, o created_at + 30 min como
+              // respaldo para filas creadas antes de que existiera esta
+              // columna) se marca RECHAZADO local como fallback (los cobros
+              // nunca debitan saldo al crearse, así que rechazar aquí no
+              // requiere reintegrar nada).
+              const expiresAt = tx.expires_at
+                ? new Date(tx.expires_at)
+                : new Date(new Date(tx.created_at).getTime() + LINK_EXPIRATION_MS);
+              if (Date.now() > expiresAt.getTime()) {
                 await adminClient.from("bepay_transactions")
                   .update({ status: "REJECTED", updated_at: new Date().toISOString() })
                   .eq("id", tx.id);
@@ -932,7 +966,7 @@ serve(async (req) => {
                   entity_id: tx.id,
                   metadata:  {
                     bepay_ide: tx.bepay_ide,
-                    age_minutes: Math.round(ageMs / 60000),
+                    age_minutes: Math.round((Date.now() - new Date(tx.created_at).getTime()) / 60000),
                     last_bepay_status: statusJson.data?.status ?? null,
                   },
                 });

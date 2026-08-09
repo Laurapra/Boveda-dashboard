@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuthStore } from "../store/authStore";
-import { createVirtualKey, getVirtualKeys, deactivateVirtualKey, getBrebRegistration } from "../lib/bepayClient";
+import { createVirtualKey, getVirtualKeys, deactivateVirtualKey, getBrebRegistration, syncMyPayouts } from "../lib/bepayClient";
 import { StatusBadge } from "../components/ui/StatusBadge";
 import { Modal } from "../components/ui/Modal";
 import { Input } from "../components/ui/Input";
@@ -193,6 +193,13 @@ export const BilleterasView: React.FC<Props> = ({ fmt, onToast }) => {
     if (!wallet || !user) return;
     setMovementsLoading(true);
     try {
+      // Refresca las dispersiones propias que sigan en PENDING contra el
+      // estado real de Bepay antes de leer — antes solo se actualizaban si
+      // un admin daba clic en "Sincronizar", así que se quedaban pendientes
+      // para siempre en esta tabla aunque ya hubieran completado o sido
+      // rechazadas. Best-effort: si falla, igual se muestra lo que ya había.
+      try { await syncMyPayouts(); } catch { /* no bloquea la carga */ }
+
       const [chargesRes, payoutsRes] = await Promise.all([
         supabase
           .from("bepay_transactions")

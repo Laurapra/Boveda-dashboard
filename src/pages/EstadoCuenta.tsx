@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuthStore } from "../store/authStore";
+import { syncMyPayouts } from "../lib/bepayClient";
 import type { ToastType } from "../types";
 
 interface Props {
@@ -80,6 +81,15 @@ export const EstadoCuentaView: React.FC<Props> = ({ fmt, onToast }) => {
   const load = useCallback(async () => {
     if (!user) return;
     setLoading(true);
+
+    // Antes de leer, se refrescan las dispersiones propias que sigan en
+    // PENDING con el estado real de Bepay — si no, se quedaban pendientes
+    // para siempre porque solo un admin podía forzar la sincronización, y
+    // por eso nunca entraban en "Total dispersado" / "Comisiones" de abajo
+    // (esos totales solo cuentan APPROVED/COMPLETED). Es best-effort: si
+    // falla, se sigue mostrando lo que ya había en la base.
+    try { await syncMyPayouts(); } catch { /* no bloquea la carga */ }
+
     const desde = `${mes}-01`;
     const hasta = new Date(new Date(desde).setMonth(new Date(desde).getMonth() + 1)).toISOString().slice(0, 10);
 

@@ -220,3 +220,10 @@ export async function syncPendingCharges() {
 export async function syncPendingPayouts() {
   return callBepay("bepay-payouts", "sync_pending_payouts", {});
 }
+
+// Igual que syncPendingPayouts pero solo para las dispersiones del usuario
+// que llama — cualquier cliente puede usarla (no requiere admin), a
+// diferencia de la de arriba.
+export async function syncMyPayouts() {
+  return callBepay("bepay-payouts", "sync_my_payouts", {});
+}

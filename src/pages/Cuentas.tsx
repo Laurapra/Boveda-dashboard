@@ -163,7 +163,8 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
     banco: string;
     num: string;
     llave: string;
-  }>({ tipo: "", banco: "", num: "", llave: "" });
+    confirmDoc: string;
+  }>({ tipo: "", banco: "", num: "", llave: "", confirmDoc: "" });
 
   const bf = (k: keyof typeof bForm) => (v: string) => setBForm((p) => ({ ...p, [k]: v }));
   const cf = (k: keyof typeof ctaForm) => (v: string) => setCtaForm((p) => ({ ...p, [k]: v }));
@@ -240,6 +241,13 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
       onToast("error", "Campos requeridos", "Completa todos los campos obligatorios, incluyendo el tipo de cuenta");
       return;
     }
+    // La cuenta debe pertenecer a la misma persona que se está registrando —
+    // se pide confirmar el documento por separado para no dar por hecho que
+    // quien llena el formulario no se equivocó de cuenta/beneficiario.
+    if (ctaForm.confirmDoc.trim() !== bForm.numdoc.trim()) {
+      onToast("error", "El documento no coincide", "El número de documento de la cuenta debe ser el mismo del titular (" + bForm.numdoc + ")");
+      return;
+    }
     if (!user) return;
 
     setSavingBen(true);
@@ -271,7 +279,7 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
 
       onToast("ok", "Beneficiario guardado", bForm.nombre);
       setBForm({ tipodoc: "CC", numdoc: "", nombre: "", celular: "", correo: "" });
-      setCtaForm({ tipo: "", banco: "", num: "", llave: "" });
+      setCtaForm({ tipo: "", banco: "", num: "", llave: "", confirmDoc: "" });
       setNewBenOpen(false);
       await loadBens();
     } catch (err: unknown) {
@@ -283,6 +291,18 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
 
   const handleSaveCta = async () => {
     if (newCtaTarget === null || !ctaForm.tipo) return;
+
+    const targetBen = bens.find((b) => b.id === newCtaTarget);
+    if (!targetBen) {
+      onToast("error", "Error", "No se encontró el beneficiario");
+      return;
+    }
+    // Misma validación que al crear un beneficiario nuevo: la cuenta que se
+    // agrega debe ser del mismo titular, no de otra persona por error.
+    if (ctaForm.confirmDoc.trim() !== targetBen.doc_number.trim()) {
+      onToast("error", "El documento no coincide", "El número de documento de la cuenta debe ser el mismo de " + targetBen.full_name + " (" + targetBen.doc_number + ")");
+      return;
+    }
 
     setSavingCta(true);
     try {
@@ -297,7 +317,7 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
       if (error) throw new Error(error.message);
 
       onToast("ok", "Cuenta agregada", ctaForm.tipo);
-      setCtaForm({ tipo: "", banco: "", num: "", llave: "" });
+      setCtaForm({ tipo: "", banco: "", num: "", llave: "", confirmDoc: "" });
       setNewCtaTarget(null);
       await loadBens();
     } catch (err: unknown) {
@@ -328,6 +348,13 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
     onToast("ok", "Cuenta eliminada", banco);
     await loadBens();
   };
+
+  // La cuenta debe confirmarse con el mismo documento del titular — se
+  // calcula acá para deshabilitar los botones de guardar, además del toast
+  // de error al intentar enviar (feedback inmediato en vez de solo al enviar).
+  const newBenDocMismatch = !ctaForm.confirmDoc || ctaForm.confirmDoc.trim() !== bForm.numdoc.trim();
+  const newCtaTargetBen = bens.find((b) => b.id === newCtaTarget);
+  const newCtaDocMismatch = !ctaForm.confirmDoc || ctaForm.confirmDoc.trim() !== (newCtaTargetBen?.doc_number ?? "").trim();
 
   const filteredBens = bens.filter((b) => {
     const q = query.toLowerCase();
@@ -380,7 +407,7 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
             </button>
             <button
               onClick={() => {
-                setCtaForm({ tipo: "", banco: "", num: "", llave: "" });
+                setCtaForm({ tipo: "", banco: "", num: "", llave: "", confirmDoc: "" });
                 setNewBenOpen(true);
               }}
               style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "8px 14px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: "var(--radius-sm)", fontWeight: 600, fontSize: "13px", cursor: "pointer" }}
@@ -483,7 +510,7 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
                             onClick={(e) => {
                               e.stopPropagation();
                               setNewCtaTarget(b.id);
-                              setCtaForm({ tipo: "", banco: "", num: "", llave: "" });
+                              setCtaForm({ tipo: "", banco: "", num: "", llave: "", confirmDoc: "" });
                             }}
                             style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "4px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--surface)", color: "var(--t2)", fontSize: "12px", cursor: "pointer" }}
                           >
@@ -544,7 +571,7 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
                 <button onClick={() => setNewBenOpen(false)} style={{ padding: "9px 16px", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--surface)", color: "var(--t1)", fontWeight: 600, cursor: "pointer" }}>
                   Cancelar
                 </button>
-                <button onClick={handleSaveBen} disabled={savingBen} style={{ padding: "9px 16px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: "var(--radius-sm)", fontWeight: 600, cursor: "pointer", opacity: savingBen ? 0.6 : 1 }}>
+                <button onClick={handleSaveBen} disabled={savingBen || newBenDocMismatch} style={{ padding: "9px 16px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: "var(--radius-sm)", fontWeight: 600, cursor: savingBen || newBenDocMismatch ? "not-allowed" : "pointer", opacity: savingBen || newBenDocMismatch ? 0.6 : 1 }}>
                   <i className="ti ti-check" style={{ marginRight: "6px" }} />
                   {savingBen ? "Guardando…" : "Guardar beneficiario"}
                 </button>
@@ -650,6 +677,27 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
                 <input value={ctaForm.llave} onChange={(e) => cf("llave")(e.target.value)} placeholder="Ej. nombre@breb.co" style={inputStyle} />
               </div>
             ) : null}
+            {ctaForm.tipo ? (
+              <div style={{ marginTop: "12px" }}>
+                <label style={labelStyle}>
+                  Confirma el número de documento del titular de esta cuenta <span style={{ color: "var(--accent)" }}>*</span>
+                </label>
+                <input
+                  value={ctaForm.confirmDoc}
+                  onChange={(e) => cf("confirmDoc")(e.target.value)}
+                  placeholder="Repite el número de documento de arriba"
+                  style={{
+                    ...inputStyle,
+                    borderColor: ctaForm.confirmDoc && ctaForm.confirmDoc.trim() !== bForm.numdoc.trim() ? "var(--error)" : undefined,
+                  }}
+                />
+                {ctaForm.confirmDoc && ctaForm.confirmDoc.trim() !== bForm.numdoc.trim() ? (
+                  <div style={{ fontSize: "11px", color: "var(--error)", marginTop: "4px" }}>No coincide con el número de documento del titular</div>
+                ) : (
+                  <div style={{ fontSize: "11px", color: "var(--t3)", marginTop: "4px" }}>Debe ser el mismo documento que la cuenta receptora tiene registrado en su banco</div>
+                )}
+              </div>
+            ) : null}
           </Modal>
 
           {/* Modal agregar cuenta */}
@@ -663,7 +711,7 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
                 <button onClick={() => setNewCtaTarget(null)} style={{ padding: "9px 16px", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--surface)", color: "var(--t1)", fontWeight: 600, cursor: "pointer" }}>
                   Cancelar
                 </button>
-                <button onClick={handleSaveCta} disabled={!ctaForm.tipo || savingCta} style={{ padding: "9px 16px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: "var(--radius-sm)", fontWeight: 600, cursor: !ctaForm.tipo ? "not-allowed" : "pointer", opacity: !ctaForm.tipo || savingCta ? 0.5 : 1 }}>
+                <button onClick={handleSaveCta} disabled={!ctaForm.tipo || savingCta || newCtaDocMismatch} style={{ padding: "9px 16px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: "var(--radius-sm)", fontWeight: 600, cursor: !ctaForm.tipo || newCtaDocMismatch ? "not-allowed" : "pointer", opacity: !ctaForm.tipo || savingCta || newCtaDocMismatch ? 0.5 : 1 }}>
                   <i className="ti ti-plus" style={{ marginRight: "6px" }} />
                   {savingCta ? "Guardando…" : "Agregar cuenta"}
                 </button>
@@ -729,6 +777,29 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
                 <input value={ctaForm.llave} onChange={(e) => cf("llave")(e.target.value)} placeholder="Ej. nombre@breb.co" style={inputStyle} />
               </div>
             ) : null}
+            {ctaForm.tipo ? (() => {
+              const targetBen = bens.find((b) => b.id === newCtaTarget);
+              const targetDoc = targetBen?.doc_number ?? "";
+              const mismatch = !!ctaForm.confirmDoc && ctaForm.confirmDoc.trim() !== targetDoc.trim();
+              return (
+                <div style={{ marginTop: "12px" }}>
+                  <label style={labelStyle}>
+                    Confirma el número de documento de {targetBen?.full_name ?? "el titular"} <span style={{ color: "var(--accent)" }}>*</span>
+                  </label>
+                  <input
+                    value={ctaForm.confirmDoc}
+                    onChange={(e) => cf("confirmDoc")(e.target.value)}
+                    placeholder={"Ej. " + targetDoc}
+                    style={{ ...inputStyle, borderColor: mismatch ? "var(--error)" : undefined }}
+                  />
+                  {mismatch ? (
+                    <div style={{ fontSize: "11px", color: "var(--error)", marginTop: "4px" }}>No coincide con el documento registrado de {targetBen?.full_name}</div>
+                  ) : (
+                    <div style={{ fontSize: "11px", color: "var(--t3)", marginTop: "4px" }}>Debe ser el mismo documento que la cuenta receptora tiene registrado en su banco</div>
+                  )}
+                </div>
+              );
+            })() : null}
           </Modal>
       </React.Fragment>
     </div>

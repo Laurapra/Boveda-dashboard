@@ -30,7 +30,10 @@ interface GenResult {
   code: string;
   amount: number | null;
   concept: string;
+  expiresAt: number;
 }
+
+const LINK_EXPIRATION_MS = 30 * 60 * 1000;
 
 function fmtCOP(n: number): string {
   return new Intl.NumberFormat("es-CO", {
@@ -140,6 +143,25 @@ export const CreateLinkModal: React.FC<Props> = ({ isOpen, onClose, onToast }) =
     checkOnboarding();
   }, [isOpen, loadKeys, loadMethods, checkOnboarding]);
 
+  // Cuenta regresiva de los 30 min de vigencia del link/QR — solo corre
+  // mientras se está mostrando el resultado. Arranca en 0 (Date.now() es
+  // impuro y no se puede llamar como valor inicial durante el render) y se
+  // fija apenas monta el efecto, envuelto en Promise.resolve().then() como
+  // en el resto del proyecto para no violar react-hooks/set-state-in-effect.
+  const [nowTick, setNowTick] = useState(0);
+  useEffect(() => {
+    if (step !== "result") return;
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (!cancelled) setNowTick(Date.now());
+    });
+    const t = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [step]);
+
   // Solo hay una billetera COP por cliente, así que en el caso normal (una
   // sola llave activa) no tiene sentido mostrar un selector — se usa esa
   // llave automáticamente. El selector solo reaparece si por alguna razón
@@ -201,6 +223,10 @@ export const CreateLinkModal: React.FC<Props> = ({ isOpen, onClose, onToast }) =
         code: ide,
         amount: amount,
         concept: concept.trim(),
+        // El backend guarda su propio expires_at (created_at + 30 min) al
+        // insertar la fila — esta marca local es solo para la cuenta
+        // regresiva visual, calculada en el mismo momento.
+        expiresAt: Date.now() + LINK_EXPIRATION_MS,
       });
       setStep("result");
       onToast("ok", tab === "link" ? "Link creado" : "QR generado", ide);
@@ -279,6 +305,14 @@ export const CreateLinkModal: React.FC<Props> = ({ isOpen, onClose, onToast }) =
   };
 
   const downloadName = result ? "qr-" + result.code + ".png" : "qr.png";
+
+  // nowTick arranca en 0 (ver arriba) hasta que el efecto lo fija — mientras
+  // tanto se muestra el tope de 30:00 en vez de una resta contra epoch 0.
+  const msLeft = result ? (nowTick === 0 ? LINK_EXPIRATION_MS : Math.max(0, result.expiresAt - nowTick)) : 0;
+  const isExpired = !!result && msLeft <= 0;
+  const minsLeft = Math.floor(msLeft / 60000);
+  const secsLeft = Math.floor((msLeft % 60000) / 1000);
+  const countdownLabel = isExpired ? "Vencido" : `Vence en ${minsLeft}:${String(secsLeft).padStart(2, "0")}`;
 
   const linkTabStyle: React.CSSProperties = {
     flex: 1,
@@ -508,9 +542,14 @@ export const CreateLinkModal: React.FC<Props> = ({ isOpen, onClose, onToast }) =
               )}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "2px 8px", borderRadius: "6px", fontSize: "11px", fontWeight: 700, background: "var(--success-dim)", color: "var(--success)" }}>
-                {"\u25CF "}{result.type === "link" ? "Link activo" : "QR activo"}
-              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: "7px", flexWrap: "wrap" }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "2px 8px", borderRadius: "6px", fontSize: "11px", fontWeight: 700, background: isExpired ? "var(--error-dim)" : "var(--success-dim)", color: isExpired ? "var(--error)" : "var(--success)" }}>
+                  {"\u25CF "}{isExpired ? "Vencido" : result.type === "link" ? "Link activo" : "QR activo"}
+                </span>
+                <span style={{ fontSize: "11px", fontWeight: 600, color: isExpired ? "var(--error)" : "var(--t3)", fontVariantNumeric: "tabular-nums" }}>
+                  {countdownLabel}
+                </span>
+              </div>
               <div style={{ fontSize: "20px", fontWeight: 700, marginTop: "6px", fontVariantNumeric: "tabular-nums" }}>
                 {result.amount ? fmtCOP(result.amount) : "Monto abierto"}
               </div>
@@ -521,6 +560,12 @@ export const CreateLinkModal: React.FC<Props> = ({ isOpen, onClose, onToast }) =
             </div>
           </div>
 
+          {isExpired ? (
+            <div style={{ padding: "10px 14px", background: "var(--error-dim)", border: "1px solid var(--error)", borderRadius: "var(--radius-sm)", fontSize: "12.5px", color: "var(--error)" }}>
+              Este {result.type === "link" ? "link" : "c\u00F3digo QR"} venci\u00F3 a los 30 minutos y ya no acepta pagos. Genera uno nuevo.
+            </div>
+          ) : null}
+
           {result.url ? (
             <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "var(--elevated)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", padding: "10px 12px" }}>
               <code style={{ fontFamily: "var(--mono)", fontSize: "12.5px", color: "var(--accent)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -528,6 +573,7 @@ export const CreateLinkModal: React.FC<Props> = ({ isOpen, onClose, onToast }) =
               </code>
               <button
                 onClick={handleCopy}
+                disabled={isExpired}
                 style={{
                   padding: "5px 10px",
                   borderRadius: "6px",
@@ -536,7 +582,8 @@ export const CreateLinkModal: React.FC<Props> = ({ isOpen, onClose, onToast }) =
                   border: "1px solid var(--border)",
                   fontWeight: 600,
                   fontSize: "12px",
-                  cursor: "pointer",
+                  cursor: isExpired ? "not-allowed" : "pointer",
+                  opacity: isExpired ? 0.5 : 1,
                   transition: ".14s",
                   flexShrink: 0,
                 }}
@@ -548,7 +595,11 @@ export const CreateLinkModal: React.FC<Props> = ({ isOpen, onClose, onToast }) =
 
           <div style={{ display: "flex", gap: "8px" }}>
             {result.url ? (
-              <button onClick={handleShareWhatsApp} style={whatsappButtonStyle}>
+              <button
+                onClick={handleShareWhatsApp}
+                disabled={isExpired}
+                style={{ ...whatsappButtonStyle, opacity: isExpired ? 0.5 : 1, cursor: isExpired ? "not-allowed" : "pointer" }}
+              >
                 <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
                   <path d="M12 2a10 10 0 00-8.7 15l-1.3 4.7 4.8-1.3A10 10 0 1012 2zm4.5 12c-.2-.1-1.4-.7-1.6-.8s-.4-.1-.5.1-.6.8-.8 1-.3.1-.5 0a6.5 6.5 0 01-1.9-1.2 7.2 7.2 0 01-1.3-1.7c-.1-.2 0-.4.1-.5l.4-.4.2-.4v-.4c0-.1-.5-1.3-.7-1.8s-.4-.4-.5-.4h-.5a1 1 0 00-.7.3 3 3 0 00-.9 2.2c0 1.3.9 2.5 1 2.7s1.9 2.9 4.6 4c1.6.7 2.2.8 3 .6.5-.1 1.4-.6 1.6-1.1s.2-1 .1-1.1l-.4-.2z" />
                 </svg>
@@ -556,7 +607,11 @@ export const CreateLinkModal: React.FC<Props> = ({ isOpen, onClose, onToast }) =
               </button>
             ) : null}
             {result.qrImage ? (
-              <button onClick={handleDownloadQr} style={downloadQrStyle}>
+              <button
+                onClick={handleDownloadQr}
+                disabled={isExpired}
+                style={{ ...downloadQrStyle, opacity: isExpired ? 0.5 : 1, cursor: isExpired ? "not-allowed" : "pointer" }}
+              >
                 Descargar QR
               </button>
             ) : null}

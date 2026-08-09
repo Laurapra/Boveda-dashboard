@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuthStore } from "../store/authStore";
-import { getBepayBalance } from "../lib/bepayClient";
+import { getBepayBalance, syncMyPayouts } from "../lib/bepayClient";
 import type { ToastType } from "../types";
 
 interface Props {
@@ -71,14 +71,16 @@ function conceptLabel(t: TxRow): string {
 }
 
 interface Metrics {
-  saldo:      number;
-  recibido:   number;
-  dispersado: number;
-  recCount:   number;
-  dispCount:  number;
+  saldo:          number;
+  recibido:       number;
+  dispersado:     number;
+  recCount:       number;
+  dispCount:      number;
+  congelado:      number;
+  congeladoCount: number;
 }
 
-const EMPTY: Metrics = { saldo: 0, recibido: 0, dispersado: 0, recCount: 0, dispCount: 0 };
+const EMPTY: Metrics = { saldo: 0, recibido: 0, dispersado: 0, recCount: 0, dispCount: 0, congelado: 0, congeladoCount: 0 };
 
 export const HomeView: React.FC<Props> = ({ fmt, onToast }) => {
   const { user }  = useAuthStore();
@@ -98,6 +100,13 @@ export const HomeView: React.FC<Props> = ({ fmt, onToast }) => {
     if (!user) return;
     setLoading(true);
     try {
+      // Refresca las dispersiones propias que sigan en PENDING antes de leer
+      // — sin esto se quedaban pendientes hasta que un admin sincronizara a
+      // mano, y por eso nunca contaban en "Dispersado este mes".
+      if (!isAdmin) {
+        try { await syncMyPayouts(); } catch { /* no bloquea la carga */ }
+      }
+
       // 1. Transacciones
       let q = supabase
         .from("bepay_transactions")
@@ -127,12 +136,22 @@ export const HomeView: React.FC<Props> = ({ fmt, onToast }) => {
       const recibidas   = completadas.filter(t => t.type === "charge");
       const dispersadas = completadas.filter(t => t.type === "payout");
 
+      // Dispersiones en PENDING ahora mismo — su monto+comisión ya se
+      // descontó del saldo apenas se enviaron (aunque Bepay todavía no
+      // confirme si se completan o se rechazan), así que es plata
+      // "congelada": ya no está disponible para gastar, pero tampoco salió
+      // en definitiva. No se limita al mes actual — es una foto del estado
+      // presente, no un acumulado del período.
+      const congeladas = rows.filter(t => t.type === "payout" && t.status === "PENDING");
+
       setMetrics({
         saldo,
-        recibido:   recibidas.reduce((s, t) => s + t.amount, 0),
-        dispersado: dispersadas.reduce((s, t) => s + t.amount, 0),
-        recCount:   recibidas.length,
-        dispCount:  dispersadas.length,
+        recibido:       recibidas.reduce((s, t) => s + t.amount, 0),
+        dispersado:     dispersadas.reduce((s, t) => s + t.amount, 0),
+        recCount:       recibidas.length,
+        dispCount:      dispersadas.length,
+        congelado:      congeladas.reduce((s, t) => s + t.amount + (t.comision_total ?? 0), 0),
+        congeladoCount: congeladas.length,
       });
 
       // 4. Feed: últimas 8
@@ -306,6 +325,32 @@ export const HomeView: React.FC<Props> = ({ fmt, onToast }) => {
               </div>
             </div>
           </div>
+
+          {metrics.congeladoCount > 0 ? (
+            <>
+              <div style={{ height: "1px", background: "var(--border)", margin: "20px 0" }} />
+
+              {/* Congelado — dispersiones en PENDING: ya se descontaron del
+                  saldo pero todavía no se confirman como completadas o
+                  rechazadas. */}
+              <div style={{ display: "flex", alignItems: "flex-start", gap: "14px" }}>
+                <div style={{ width: "36px", height: "36px", borderRadius: "9px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "17px", flexShrink: 0, background: "var(--warning-dim)", color: "var(--warning)", marginTop: "3px" }}>
+                  <i className="ti ti-clock-hour-4" />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: "10px", fontWeight: 600, color: "var(--t3)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "6px" }}>
+                    Congelado en dispersiones pendientes
+                  </div>
+                  <div style={{ fontSize: "22px", fontWeight: 600, lineHeight: 1, marginBottom: "8px", color: "var(--warning)", fontVariantNumeric: "tabular-nums" }}>
+                    {loading ? "—" : fmt(metrics.congelado)}
+                  </div>
+                  <div style={{ fontSize: "11px", color: "var(--t3)" }}>
+                    <b style={{ fontWeight: 600, color: "var(--t2)" }}>{metrics.congeladoCount}</b> {metrics.congeladoCount === 1 ? "dispersión" : "dispersiones"} esperando confirmación de Bepay — ya se descontó del saldo, se reintegra si se rechaza
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : null}
         </div>
       </div>
 
@@ -398,7 +443,7 @@ export const HomeView: React.FC<Props> = ({ fmt, onToast }) => {
                         <span style={{ display: "inline-flex", alignItems: "center", padding: "2px 8px", borderRadius: "20px", fontSize: "11px", fontWeight: 500, color: statusColor, background: statusBg }}>
                           {t.status === "APPROVED" || t.status === "COMPLETED" ? "Completado"
                             : t.status === "PENDING" ? "Pendiente"
-                            : t.status === "DECLINED" ? "Rechazado" : t.status}
+                            : "Rechazado" /* FAILED, REJECTED, DECLINED, CANCELLED, etc. — mismo criterio que Estado de Cuenta / Mis billeteras */}
                         </span>
                       </td>
                     </tr>

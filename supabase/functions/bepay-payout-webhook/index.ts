@@ -105,7 +105,7 @@ serve(async (req) => {
     // bepay-payouts al crearla — ver extractPayoutId en ese archivo) ──────
     const { data: txRow } = await adminClient
       .from("bepay_transactions")
-      .select("id, user_id, status, amount, comision_total")
+      .select("id, user_id, amount, comision_total")
       .eq("bepay_ide", String(payoutId))
       .eq("type", "payout")
       .single();
@@ -117,24 +117,14 @@ serve(async (req) => {
       });
     }
 
-    // Reintegra saldo si la dispersión pasó de PENDING a un estado de
-    // rechazo/fallo — no hace nada si pasó a un estado de éxito, y es seguro
-    // aunque el webhook llegue duplicado (solo actúa si el status guardado
-    // todavía era PENDING). Debe ir ANTES de sobreescribir el status abajo.
-    await applyPayoutStatusTransition(adminClient, txRow, finalStatus);
-
-    const { error: updateErr } = await adminClient
-      .from("bepay_transactions")
-      .update({
-        status: finalStatus,
-        raw_response: verifiedData,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", txRow.id);
-
-    if (updateErr) {
-      console.error("[bepay-payout-webhook] Error actualizando:", updateErr.message);
-    }
+    // Escribe el status y reintegra saldo si pasó a rechazo/fallo — todo
+    // atómico dentro de applyPayoutStatusTransition (ver comentario largo en
+    // _shared/balance.ts). Antes esta función solo decidía si reintegrar y
+    // el status se pisaba después con un UPDATE aparte — si el webhook
+    // llegaba duplicado casi al mismo tiempo (o corría junto con una
+    // sincronización manual/automática), las dos entregas podían leer
+    // "todavía PENDING" y reintegrar el mismo dinero dos veces.
+    await applyPayoutStatusTransition(adminClient, txRow, finalStatus, { raw_response: verifiedData });
 
     await adminClient.from("audit_log").insert({
       user_id: txRow.user_id,

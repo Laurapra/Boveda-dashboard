@@ -67,30 +67,59 @@ export async function creditBalance(
 
 // Aplica la transición de estado de una dispersión ya existente (polling
 // manual, sync masivo, o webhook) — reintegra el saldo si pasó a un estado
-// de rechazo, y no hace nada si pasó a un estado de éxito. Es seguro
-// llamarla más de una vez para la misma fila: solo actúa si el estado
-// ANTERIOR guardado era PENDING (si ya se procesó el rechazo antes, el
-// estado ya no será PENDING la siguiente vez y no se reintegra dos veces).
+// de rechazo, y no hace nada de saldo si pasó a un estado de éxito. ESTA
+// función es la única que escribe el nuevo status — el llamador ya NO debe
+// hacer su propio UPDATE de status después de llamarla (antes cada llamador
+// leía el status "de antes", decidía si reintegrar, y LUEGO pisaba el status
+// con su propio UPDATE por separado; si el webhook de Bepay y una
+// sincronización manual/automática caían casi al mismo tiempo para la misma
+// dispersión, las dos podían leer "PENDING" antes de que la otra terminara
+// de escribir, y las dos reintegraban el mismo dinero).
 //
-// IMPORTANTE: se debe llamar con el estado ANTERIOR (antes de actualizar la
-// fila con el nuevo estado) — el llamador es responsable de leer la fila
-// antes de hacer el UPDATE.
+// Ahora la transición a un estado de rechazo es una sola UPDATE condicional
+// y atómica en la base de datos ("WHERE status = 'PENDING'"): como mucho una
+// de dos llamadas concurrentes logra afectar la fila (gana la carrera), y
+// solo esa reintegra el saldo — la otra no encuentra la fila en PENDING (ya
+// la cambió la primera) y no hace nada. Es seguro llamarla cualquier
+// cantidad de veces para la misma fila.
 export async function applyPayoutStatusTransition(
   adminClient: AdminClient,
-  tx: { id: string; user_id: string; status: string; amount: number; comision_total: number | null },
-  newStatus: string
+  tx: { id: string; user_id: string; amount: number; comision_total: number | null },
+  newStatus: string,
+  extraFields: Record<string, unknown> = {}
 ): Promise<void> {
-  if (!isPendingStatus(tx.status)) return; // ya se resolvió antes, no volver a tocar el saldo
-  if (!isRejectedStatus(newStatus)) return; // pasó a un estado de éxito — no hacer nada más
+  const baseUpdate = { status: newStatus, updated_at: new Date().toISOString(), ...extraFields };
 
-  const total = Number(tx.amount) + Number(tx.comision_total ?? 0);
-  await creditBalance(adminClient, tx.user_id, total);
+  if (isRejectedStatus(newStatus)) {
+    const { data: rows, error } = await adminClient
+      .from("bepay_transactions")
+      .update(baseUpdate)
+      .eq("id", tx.id)
+      .eq("status", "PENDING")
+      .select("id");
 
-  await adminClient.from("audit_log").insert({
-    user_id: tx.user_id,
-    action: "PAYOUT_BALANCE_REFUND",
-    entity: "bepay_transaction",
-    entity_id: tx.id,
-    metadata: { total_reintegrado: total, status_anterior: tx.status, status_nuevo: newStatus },
-  });
+    if (error) throw new Error("Error actualizando dispersión: " + error.message);
+    if (!rows || rows.length === 0) return; // otra llamada ya la transicionó (o ya no estaba PENDING) — no reintegrar de nuevo
+
+    const total = Number(tx.amount) + Number(tx.comision_total ?? 0);
+    await creditBalance(adminClient, tx.user_id, total);
+
+    await adminClient.from("audit_log").insert({
+      user_id: tx.user_id,
+      action: "PAYOUT_BALANCE_REFUND",
+      entity: "bepay_transaction",
+      entity_id: tx.id,
+      metadata: { total_reintegrado: total, status_nuevo: newStatus },
+    });
+    return;
+  }
+
+  // Transición a un estado de éxito u otro no-rechazo — no mueve saldo, solo
+  // actualiza si sigue en PENDING (sin riesgo de doble movimiento de dinero
+  // aquí, pero misma condición para no pisar un estado final ya resuelto).
+  await adminClient
+    .from("bepay_transactions")
+    .update(baseUpdate)
+    .eq("id", tx.id)
+    .eq("status", "PENDING");
 }
