@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuthStore } from "../store/authStore";
-import { getBanks, getDocumentTypes, lookupBrebKey } from "../lib/bepayClient";
+import { getBanks, getDocumentTypes, lookupBrebKey, syncMyPayouts } from "../lib/bepayClient";
 import { StatusBadge } from "../components/ui/StatusBadge";
 import { Modal } from "../components/ui/Modal";
 import type { ToastType } from "../types";
@@ -345,6 +345,12 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
   const [sentTxns, setSentTxns] = useState<{ amount: number; ben_doc_number: string | null; created_at: string }[]>([]);
   const loadSentStats = useCallback(async () => {
     if (!user) return;
+    // Refresca las dispersiones propias que sigan en PENDING antes de leer —
+    // sin esto, esta pantalla es la única del panel que no sincroniza con el
+    // estado real de Bepay al cargar (Movimientos, Estado de Cuenta e Inicio
+    // ya lo hacen), y una dispersión que ya se completó del lado de Bepay
+    // seguía mostrando $0 acá hasta que alguien la sincronizara a mano.
+    try { await syncMyPayouts(); } catch { /* no bloquea la carga */ }
     const startOfYear = new Date(new Date().getFullYear(), 0, 1).toISOString();
     const { data } = await supabase
       .from("bepay_transactions")
