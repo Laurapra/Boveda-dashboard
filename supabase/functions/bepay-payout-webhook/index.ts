@@ -91,8 +91,20 @@ serve(async (req) => {
     const statusJson = await statusRes.json();
     console.log("[bepay-payout-webhook] Verificación oficial:", JSON.stringify(statusJson));
 
+    // OJO: statusJson.data.status es el estado del LOTE (ej. "PROCESSED"),
+    // no el del pago individual dentro de él (data.payouts[0].status, ej.
+    // "APPROVED") — son vocabularios distintos que no siempre coinciden.
+    // Como cada dispersión nuestra manda un solo pago por lote, el estado
+    // individual es el que de verdad dice si ESA dispersión se completó;
+    // usar el del lote hacía que nunca se reconociera como completada
+    // aunque el pago ya estuviera aprobado y el dinero ya hubiera salido
+    // (confirmado con un caso real: lote "PROCESSED", pago "APPROVED").
     const verifiedData = statusJson.data ?? payload;
-    const finalStatus = verifiedData.status ?? payload.status;
+    const verifiedPayouts = Array.isArray(verifiedData?.payouts) ? verifiedData.payouts : null;
+    const itemStatus = verifiedPayouts && verifiedPayouts[0] && typeof verifiedPayouts[0] === "object"
+      ? (verifiedPayouts[0] as Record<string, unknown>).status
+      : undefined;
+    const finalStatus = (typeof itemStatus === "string" && itemStatus) ? itemStatus : (verifiedData.status ?? payload.status);
 
     if (!finalStatus) {
       console.warn("[bepay-payout-webhook] No se pudo determinar el estado final");

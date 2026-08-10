@@ -50,6 +50,27 @@ function extractPayoutId(data: unknown): string | null {
   return String(raw);
 }
 
+// GET /payout/status/{id}/{account_id} devuelve DOS niveles de estado: el
+// del LOTE completo (data.status, ej. "PROCESSED") y el del pago
+// INDIVIDUAL dentro de ese lote (data.payouts[0].status, ej. "APPROVED") —
+// son vocabularios distintos y no siempre coinciden (confirmado con un caso
+// real: lote "PROCESSED" con el pago individual ya en "APPROVED"). Como
+// cada dispersión nuestra manda un solo pago por lote, lo que de verdad
+// dice si ESA dispersión se completó es el estado individual — usar el del
+// lote hacía que nunca se reconociera como completada (ni "PROCESSED" ni
+// "STARTED" coinciden con nada que el resto del sistema busque), aunque el
+// pago ya estuviera aprobado y el dinero ya hubiera salido. Cae al estado
+// del lote solo si la respuesta no trae el arreglo "payouts".
+function extractPayoutItemStatus(data: Record<string, unknown> | null | undefined): string | undefined {
+  if (!data) return undefined;
+  const payouts = data.payouts;
+  if (Array.isArray(payouts) && payouts.length > 0 && payouts[0] && typeof payouts[0] === "object") {
+    const itemStatus = (payouts[0] as Record<string, unknown>).status;
+    if (typeof itemStatus === "string" && itemStatus) return itemStatus;
+  }
+  return typeof data.status === "string" ? data.status : undefined;
+}
+
 async function checkOnboardingApproved(
   adminClient: ReturnType<typeof createClient>,
   userId: string
@@ -404,8 +425,9 @@ serve(async (req) => {
           { headers: { "Authorization": "Bearer " + token, "Accept": "application/json" } }
         );
         const statusResult = await res.json();
+        const effectiveStatus = extractPayoutItemStatus(statusResult.data);
 
-        if (statusResult.data && statusResult.data.status) {
+        if (effectiveStatus) {
           const { data: txRow } = await adminClient
             .from("bepay_transactions")
             .select("id, user_id, amount, comision_total, tarifa_aplicada")
@@ -417,7 +439,7 @@ serve(async (req) => {
             // Escribe el status y reintegra saldo si aplica — todo dentro de
             // applyPayoutStatusTransition, de forma atómica (ver comentario
             // en _shared/balance.ts).
-            await applyPayoutStatusTransition(adminClient, txRow, statusResult.data.status);
+            await applyPayoutStatusTransition(adminClient, txRow, effectiveStatus);
           }
         }
         result = statusResult;
@@ -455,11 +477,12 @@ serve(async (req) => {
               { headers: { "Authorization": "Bearer " + token, "Accept": "application/json" } }
             );
             const statusJson = await res.json();
+            const effectiveStatus = extractPayoutItemStatus(statusJson.data);
 
-            if (statusJson.data && statusJson.data.status && statusJson.data.status !== "PENDING") {
+            if (effectiveStatus && effectiveStatus !== "PENDING") {
               // Escribe el status y reintegra si aplica — atómico, ver
               // _shared/balance.ts.
-              await applyPayoutStatusTransition(adminClient, tx, statusJson.data.status);
+              await applyPayoutStatusTransition(adminClient, tx, effectiveStatus);
               updated++;
             }
           } catch {
@@ -495,11 +518,12 @@ serve(async (req) => {
               { headers: { "Authorization": "Bearer " + token, "Accept": "application/json" } }
             );
             const statusJson = await res.json();
+            const effectiveStatus = extractPayoutItemStatus(statusJson.data);
 
-            if (statusJson.data && statusJson.data.status && statusJson.data.status !== "PENDING") {
+            if (effectiveStatus && effectiveStatus !== "PENDING") {
               // Escribe el status y reintegra si aplica — atómico, ver
               // _shared/balance.ts.
-              await applyPayoutStatusTransition(adminClient, tx, statusJson.data.status);
+              await applyPayoutStatusTransition(adminClient, tx, effectiveStatus);
               updated++;
             }
           } catch {
