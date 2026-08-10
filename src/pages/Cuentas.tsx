@@ -1,8 +1,8 @@
 // src/pages/Cuentas.tsx
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuthStore } from "../store/authStore";
-import { getBanks } from "../lib/bepayClient";
+import { getBanks, getDocumentTypes, lookupBrebKey } from "../lib/bepayClient";
 import { StatusBadge } from "../components/ui/StatusBadge";
 import { Modal } from "../components/ui/Modal";
 import type { ToastType } from "../types";
@@ -10,6 +10,9 @@ import type { ToastType } from "../types";
 interface Props {
   onToast: (type: ToastType, title: string, msg: string) => void;
 }
+
+const fmtCOP = (n: number) =>
+  new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(n);
 
 type AccountKind = "Bre-B" | "Ahorros" | "Corriente";
 
@@ -51,6 +54,26 @@ interface RawBenRow {
 // Lista de respaldo mientras carga el catálogo real de bancos de Bepay, o
 // si la llamada falla — así el formulario nunca se queda sin opciones.
 const BANCOS_FALLBACK = ["Bancolombia", "Davivienda", "Banco de Bogotá", "BBVA Colombia", "Scotiabank Colpatria", "Banco Popular", "Nequi", "Daviplata", "Otro"];
+
+// Tipo de documento del beneficiario — este valor se manda TAL CUAL a Bepay
+// como "identification_type" al hacer una dispersión ACH (ver Movimientos.tsx,
+// document_type: selectedBen.doc_type), así que tiene que ser exactamente uno
+// de los códigos que Bepay reconoce, no un valor inventado. Antes esta lista
+// estaba a mano con "PA" para pasaporte — confirmado contra el catálogo real
+// de Bepay (GET /documentTypes) que el código correcto es "PAS", así que "PA"
+// nunca habría funcionado en una dispersión real a alguien con pasaporte.
+// Respaldo mientras carga el catálogo real, con el mismo código PEP agregado
+// manualmente porque Bepay no lo trae en su catálogo (Permiso Especial de
+// Permanencia, documento válido en Colombia para migrantes venezolanos).
+const DOC_TYPES_FALLBACK = [
+  { value: "CC",  label: "Cédula de ciudadanía (CC)" },
+  { value: "CE",  label: "Cédula de extranjería (CE)" },
+  { value: "PAS", label: "Pasaporte (PAS)" },
+  { value: "NIT", label: "NIT" },
+  { value: "TI",  label: "Tarjeta de identidad (TI)" },
+  { value: "RC",  label: "Registro civil de nacimiento (RC)" },
+  { value: "PEP", label: "Permiso Especial de Permanencia (PEP)" },
+];
 
 // ── Helpers puros, fuera del componente ──────────────────────────────
 function iniciales(nombre: string): string {
@@ -133,6 +156,49 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
   }, []);
   const bancoOptions = bancos.length > 0 ? bancos : BANCOS_FALLBACK;
 
+  // ── Catálogo real de tipos de documento (Bepay) + PEP agregado a mano ──
+  const [docTypes, setDocTypes] = useState<{ value: string; label: string }[]>([]);
+  const [docTypesLoading, setDocTypesLoading] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.resolve().then(async () => {
+      try {
+        const res = await getDocumentTypes();
+        if (cancelled) return;
+        const raw = Array.isArray(res?.data) ? (res.data as Array<Record<string, unknown>>) : [];
+        const fromBepay = raw
+          .map((d) => {
+            const value = String(d.short_name ?? d.code ?? "").trim();
+            const name = String(d.name ?? d.nombre ?? value).trim();
+            return value ? { value, label: `${name} (${value})` } : null;
+          })
+          .filter((x): x is { value: string; label: string } => x !== null);
+        // Si Bepay no devolvió nada usable (llamada fallida, catálogo vacío,
+        // etc.) se deja docTypes vacío para que docTypeOptions caiga al
+        // respaldo completo (DOC_TYPES_FALLBACK, que ya incluye PEP) — antes
+        // esto agregaba PEP encima de una lista vacía, y como el resultado
+        // ya no estaba vacío ("[PEP]".length > 0) nunca caía al respaldo,
+        // así que solo se veía PEP y nada más de Bepay.
+        if (fromBepay.length === 0) {
+          setDocTypes([]);
+        } else {
+          // PEP no viene en el catálogo de Bepay — se agrega igual porque es
+          // un documento de identidad válido en Colombia (migrantes
+          // venezolanos). Se evita duplicarlo por si algún día Bepay lo
+          // llega a incluir.
+          const hasPep = fromBepay.some((d) => d.value.toUpperCase() === "PEP");
+          setDocTypes(hasPep ? fromBepay : [...fromBepay, { value: "PEP", label: "Permiso Especial de Permanencia (PEP)" }]);
+        }
+      } catch {
+        if (!cancelled) setDocTypes([]);
+      } finally {
+        if (!cancelled) setDocTypesLoading(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, []);
+  const docTypeOptions = docTypes.length > 0 ? docTypes : DOC_TYPES_FALLBACK;
+
   // ══════════════════════════════════════════════════════════════
   // BENEFICIARIOS — personas a quienes se les envía dinero
   // ══════════════════════════════════════════════════════════════
@@ -168,6 +234,51 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
 
   const bf = (k: keyof typeof bForm) => (v: string) => setBForm((p) => ({ ...p, [k]: v }));
   const cf = (k: keyof typeof ctaForm) => (v: string) => setCtaForm((p) => ({ ...p, [k]: v }));
+
+  // ── Verificación real de la llave Bre-B (banco/titular) ──────────────
+  // Antes el banco de una cuenta Bre-B se guardaba SIEMPRE como "Ramplix" a
+  // mano, sin importar a qué banco esté realmente vinculada la llave (Nequi,
+  // Bancolombia, Movii, etc.) — mismo endpoint que ya usa Movimientos.tsx
+  // para verificar el titular antes de enviar plata (GET /payout/get/{key}
+  // vía lookup_key). Acá no bloquea el guardado si Bepay no puede
+  // verificarla todavía (solo avisa) — a diferencia de enviar plata, acá
+  // solo estamos registrando el dato del beneficiario para usarlo después.
+  const [ctaKeyLookup, setCtaKeyLookup] = useState<{ bank: string | null; holderName: string | null; verified: boolean } | null>(null);
+  const [ctaKeyLookupLoading, setCtaKeyLookupLoading] = useState(false);
+  useEffect(() => {
+    if (ctaForm.tipo !== "Bre-B" || !ctaForm.llave.trim()) {
+      setCtaKeyLookup(null);
+      setCtaKeyLookupLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setCtaKeyLookupLoading(true);
+    // Debounce de 600ms — sin esto se dispara una consulta a Bepay por cada
+    // tecla mientras la persona todavía está escribiendo la llave.
+    const timer = setTimeout(() => {
+      Promise.resolve().then(async () => {
+        if (cancelled) return;
+        try {
+          const res = await lookupBrebKey(ctaForm.llave.trim());
+          if (cancelled) return;
+          if (res && res.success && res.data) {
+            setCtaKeyLookup({
+              verified: true,
+              holderName: res.data.name || res.data.holder_name || null,
+              bank: res.data.bank || res.data.entity_name || null,
+            });
+          } else {
+            setCtaKeyLookup({ verified: false, holderName: null, bank: null });
+          }
+        } catch {
+          if (!cancelled) setCtaKeyLookup({ verified: false, holderName: null, bank: null });
+        } finally {
+          if (!cancelled) setCtaKeyLookupLoading(false);
+        }
+      });
+    }, 600);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [ctaForm.tipo, ctaForm.llave]);
 
   // ── Cargar beneficiarios reales de Supabase ─────────────────────
   const loadBens = useCallback(async () => {
@@ -223,6 +334,67 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
     };
   }, [user, loadBens]);
 
+  // ── Cuánto se le ha enviado a cada beneficiario (hoy / mes / año) ──────
+  // bepay_transactions no tiene un beneficiary_id — se relaciona con el
+  // beneficiario por ben_doc_number, que es lo único estable que se guarda
+  // en cada dispersión (el nombre puede repetirse, el documento no). Solo
+  // trae lo del año en curso — es lo único que hace falta para los 3
+  // acumulados (hoy y este mes ya están dentro de este año), así no se
+  // arrastra el historial completo de dispersiones cada vez que se abre la
+  // pantalla.
+  const [sentTxns, setSentTxns] = useState<{ amount: number; ben_doc_number: string | null; created_at: string }[]>([]);
+  const loadSentStats = useCallback(async () => {
+    if (!user) return;
+    const startOfYear = new Date(new Date().getFullYear(), 0, 1).toISOString();
+    const { data } = await supabase
+      .from("bepay_transactions")
+      .select("amount, ben_doc_number, created_at")
+      .eq("user_id", user.id)
+      .eq("type", "payout")
+      .in("status", ["APPROVED", "COMPLETED"])
+      .gte("created_at", startOfYear);
+    setSentTxns((data ?? []) as { amount: number; ben_doc_number: string | null; created_at: string }[]);
+  }, [user]);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.resolve().then(async () => {
+      if (cancelled) return;
+      await loadSentStats();
+    });
+    return () => { cancelled = true; };
+  }, [loadSentStats]);
+
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel("bens-sent-rt")
+      .on("postgres_changes", { event: "*", schema: "public", table: "bepay_transactions", filter: "user_id=eq." + user.id }, () => loadSentStats())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user, loadSentStats]);
+
+  // Agrupado por documento del beneficiario, con los 3 acumulados ya listos
+  // para pintar — se recalcula solo cuando cambian las transacciones, no en
+  // cada render.
+  const sentStatsByDoc = useMemo(() => {
+    const now = new Date();
+    const todayKey = now.toDateString();
+    const map = new Map<string, { hoy: number; mes: number; anio: number; hoyCount: number; mesCount: number; anioCount: number }>();
+    for (const t of sentTxns) {
+      const doc = (t.ben_doc_number || "").trim();
+      if (!doc) continue;
+      const d = new Date(t.created_at);
+      const entry = map.get(doc) ?? { hoy: 0, mes: 0, anio: 0, hoyCount: 0, mesCount: 0, anioCount: 0 };
+      entry.anio += t.amount;
+      entry.anioCount += 1;
+      if (d.getMonth() === now.getMonth()) { entry.mes += t.amount; entry.mesCount += 1; }
+      if (d.toDateString() === todayKey) { entry.hoy += t.amount; entry.hoyCount += 1; }
+      map.set(doc, entry);
+    }
+    return map;
+  }, [sentTxns]);
+
   const toggleOpen = (id: string) => {
     setOpenIds((prev) => {
       const next = new Set(prev);
@@ -270,7 +442,7 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
       const { error: ctaErr } = await supabase.from("beneficiary_accounts").insert({
         beneficiary_id: benData.id,
         account_type: ctaForm.tipo,
-        bank_name: ctaForm.tipo === "Bre-B" ? "Ramplix" : ctaForm.banco,
+        bank_name: ctaForm.tipo === "Bre-B" ? (ctaKeyLookup?.bank ?? "Sin identificar") : ctaForm.banco,
         account_key: ctaForm.tipo === "Bre-B" ? ctaForm.llave : ctaForm.num,
         is_active: true,
       });
@@ -309,7 +481,7 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
       const { error } = await supabase.from("beneficiary_accounts").insert({
         beneficiary_id: newCtaTarget,
         account_type: ctaForm.tipo,
-        bank_name: ctaForm.tipo === "Bre-B" ? "Ramplix" : ctaForm.banco,
+        bank_name: ctaForm.tipo === "Bre-B" ? (ctaKeyLookup?.bank ?? "Sin identificar") : ctaForm.banco,
         account_key: ctaForm.tipo === "Bre-B" ? ctaForm.llave : ctaForm.num,
         is_active: true,
       });
@@ -503,6 +675,26 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
                         </div>
                       </div>
 
+                      <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--border)" }}>
+                        <div style={{ fontSize: "10px", fontWeight: 600, color: "var(--t3)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "10px" }}>Enviado a este beneficiario</div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "8px" }}>
+                          {(() => {
+                            const stats = sentStatsByDoc.get(b.doc_number.trim()) ?? { hoy: 0, mes: 0, anio: 0, hoyCount: 0, mesCount: 0, anioCount: 0 };
+                            return [
+                              { label: "Hoy", amount: stats.hoy, count: stats.hoyCount },
+                              { label: "Este mes", amount: stats.mes, count: stats.mesCount },
+                              { label: "Este año", amount: stats.anio, count: stats.anioCount },
+                            ].map((row) => (
+                              <div key={row.label} style={{ background: "var(--elevated)", borderRadius: "var(--radius-sm)", padding: "8px 11px" }}>
+                                <div style={{ fontSize: "9px", color: "var(--t3)", marginBottom: "2px" }}>{row.label}</div>
+                                <div style={{ fontSize: "13px", fontWeight: 600, color: row.amount > 0 ? "var(--t1)" : "var(--t3)" }}>{fmtCOP(row.amount)}</div>
+                                <div style={{ fontSize: "9px", color: "var(--t3)", marginTop: "1px" }}>{row.count} dispersión{row.count !== 1 ? "es" : ""}</div>
+                              </div>
+                            ));
+                          })()}
+                        </div>
+                      </div>
+
                       <div style={{ padding: "14px 16px" }}>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
                           <span style={{ fontSize: "11px", fontWeight: 500, color: "var(--t2)" }}>Cuentas bancarias</span>
@@ -586,11 +778,11 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
                 <label style={labelStyle}>
                   Tipo de Documento <span style={{ color: "var(--accent)" }}>*</span>
                 </label>
-                <select value={bForm.tipodoc} onChange={(e) => bf("tipodoc")(e.target.value)} style={inputStyle}>
-                  <option value="CC">Cédula (CC)</option>
-                  <option value="CE">Cédula extranjería (CE)</option>
-                  <option value="PA">Pasaporte</option>
-                  <option value="NIT">NIT</option>
+                <select value={bForm.tipodoc} onChange={(e) => bf("tipodoc")(e.target.value)} style={inputStyle} disabled={docTypesLoading}>
+                  {docTypesLoading ? <option value="">Cargando...</option> : null}
+                  {docTypeOptions.map((d) => (
+                    <option key={d.value} value={d.value}>{d.label}</option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -675,6 +867,19 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
                   Llave Bre-B <span style={{ color: "var(--accent)" }}>*</span>
                 </label>
                 <input value={ctaForm.llave} onChange={(e) => cf("llave")(e.target.value)} placeholder="Ej. nombre@breb.co" style={inputStyle} />
+                {ctaKeyLookupLoading ? (
+                  <div style={{ fontSize: "11px", color: "var(--t3)", marginTop: "6px" }}>Identificando banco de la llave...</div>
+                ) : ctaKeyLookup?.verified && ctaKeyLookup.bank ? (
+                  <div style={{ fontSize: "11px", color: "var(--success)", marginTop: "6px" }}>
+                    <i className="ti ti-shield-check" style={{ marginRight: "3px" }} />
+                    Banco identificado: {ctaKeyLookup.bank}
+                    {ctaKeyLookup.holderName ? " · " + ctaKeyLookup.holderName : ""}
+                  </div>
+                ) : ctaKeyLookup && !ctaKeyLookup.verified ? (
+                  <div style={{ fontSize: "11px", color: "var(--warning)", marginTop: "6px" }}>
+                    No se pudo identificar el banco de esta llave — se guardará como "Sin identificar"
+                  </div>
+                ) : null}
               </div>
             ) : null}
             {ctaForm.tipo ? (
@@ -775,6 +980,19 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
                   Llave Bre-B <span style={{ color: "var(--accent)" }}>*</span>
                 </label>
                 <input value={ctaForm.llave} onChange={(e) => cf("llave")(e.target.value)} placeholder="Ej. nombre@breb.co" style={inputStyle} />
+                {ctaKeyLookupLoading ? (
+                  <div style={{ fontSize: "11px", color: "var(--t3)", marginTop: "6px" }}>Identificando banco de la llave...</div>
+                ) : ctaKeyLookup?.verified && ctaKeyLookup.bank ? (
+                  <div style={{ fontSize: "11px", color: "var(--success)", marginTop: "6px" }}>
+                    <i className="ti ti-shield-check" style={{ marginRight: "3px" }} />
+                    Banco identificado: {ctaKeyLookup.bank}
+                    {ctaKeyLookup.holderName ? " · " + ctaKeyLookup.holderName : ""}
+                  </div>
+                ) : ctaKeyLookup && !ctaKeyLookup.verified ? (
+                  <div style={{ fontSize: "11px", color: "var(--warning)", marginTop: "6px" }}>
+                    No se pudo identificar el banco de esta llave — se guardará como "Sin identificar"
+                  </div>
+                ) : null}
               </div>
             ) : null}
             {ctaForm.tipo ? (() => {

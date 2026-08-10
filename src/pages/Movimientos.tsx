@@ -268,7 +268,14 @@ export const MovimientosView: React.FC<Props> = ({ fmt, onToast }) => {
       (d.account_key || "").toLowerCase().includes(q) ||
       (d.ben_doc_number || "").includes(q);
 
-    const matchS = !filterStatus || d.status === filterStatus;
+    // Antes comparaba d.status (el valor crudo de Bepay: APPROVED, FAILED,
+    // DECLINED, CANCELLED, etc.) contra un solo valor fijo del filtro
+    // ("DECLINED") — pero lo que se ve en pantalla como "Rechazado" agrupa
+    // varios de esos valores (ver statusLabelFn abajo), así que casi ninguna
+    // fila coincidía nunca aunque el badge dijera "Rechazado". Ahora se
+    // compara contra la MISMA etiqueta que se muestra, para que el filtro
+    // nunca se desincronice de lo que la persona realmente ve en la tabla.
+    const matchS = !filterStatus || statusLabelFn(d.status) === filterStatus;
 
     const matchT =
       !filterTipo ||
@@ -936,9 +943,9 @@ export const MovimientosView: React.FC<Props> = ({ fmt, onToast }) => {
           </div>
           <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} style={{ ...inputStyle, flex: "1 1 150px" }}>
             <option value="">Todos los estados</option>
-            <option value="APPROVED">Completado</option>
-            <option value="PENDING">Pendiente</option>
-            <option value="DECLINED">Rechazado</option>
+            <option value="Completado">Completado</option>
+            <option value="Pendiente">Pendiente</option>
+            <option value="Rechazado">Rechazado</option>
           </select>
           <select value={filterTipo} onChange={(e) => setFilterTipo(e.target.value as TipoFiltro)} style={{ ...inputStyle, flex: "1 1 130px" }}>
             <option value="">Todos los tipos</option>
