@@ -227,6 +227,17 @@ interface UserSummaryRow {
   ganancia: number;
 }
 
+// Comisión real (no la proyección teórica de UserSummaryRow) — confirmada
+// viene de dispersiones ya completadas, congelada de las que siguen PENDING
+// y podrían revertirse si se rechazan. Ver get_house_commission_status.
+interface HouseCommissionRow {
+  user_id: string;
+  full_name: string;
+  email: string;
+  comision_confirmada: number;
+  comision_congelada: number;
+}
+
 type TabKey = "usuarios" | "onboardings" | "saldos";
 
 export const AdminView: React.FC<Props> = ({ onToast }) => {
@@ -252,6 +263,7 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
   // puede retirar, a diferencia de "Ganancia neta acumulada" de abajo, que
   // es un cálculo histórico de rentabilidad, no un saldo movible.
   const [commissionBalance, setCommissionBalance] = useState<number | null>(null);
+  const [houseCommissionRows, setHouseCommissionRows] = useState<HouseCommissionRow[]>([]);
 
   // Formulario crear usuario
   const [form, setForm] = useState<CreateUserInput>({ email: "", password: "", full_name: "", role: "operator", tarifa_recibir: 1190, tarifa_enviar: 1190, tarifa_variable: 0.0012 });
@@ -290,10 +302,11 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
     setBalanceLoading(true);
     setBalanceError(null);
     try {
-      const [balanceRes, summaryRes, profileRes] = await Promise.all([
+      const [balanceRes, summaryRes, profileRes, houseRes] = await Promise.all([
         getBepayBalance(),
         supabase.rpc("get_admin_user_summary"),
         user ? supabase.from("profiles").select("balance").eq("id", user.id).single() : Promise.resolve({ data: null, error: null }),
+        supabase.rpc("get_house_commission_status"),
       ]);
 
       if (balanceRes && balanceRes.success && balanceRes.data) {
@@ -307,6 +320,17 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
       setUserSummaries((summaryRes.data ?? []) as UserSummaryRow[]);
 
       setCommissionBalance(Number(profileRes?.data?.balance ?? 0));
+
+      // Aislado a propósito: si esta función todavía no existe (falta correr
+      // la migración) o falla por cualquier otra razón, no debe tumbar ni
+      // tapar el resto del panel (saldo real, rentabilidad, etc.) — solo se
+      // deja vacío el desglose de comisión confirmada/congelada.
+      if (houseRes.error) {
+        console.error("[loadBalances] get_house_commission_status:", houseRes.error.message);
+        setHouseCommissionRows([]);
+      } else {
+        setHouseCommissionRows((houseRes.data ?? []) as HouseCommissionRow[]);
+      }
     } catch (err) {
       setBalanceError(getErrorMessage(err));
     } finally {
@@ -452,6 +476,12 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
   const totalDispersado = userSummaries.reduce((sum, u) => sum + u.total_dispersado, 0);
   const totalTicketsRecaudo = userSummaries.reduce((sum, u) => sum + u.tickets_recaudo, 0);
   const totalTicketsDispersion = userSummaries.reduce((sum, u) => sum + u.tickets_dispersion, 0);
+
+  // Comisión real (no la proyección teórica) — confirmada vs congelada en
+  // dispersiones todavía pendientes, sumado y por cliente.
+  const totalComisionConfirmada = houseCommissionRows.reduce((sum, u) => sum + u.comision_confirmada, 0);
+  const totalComisionCongelada = houseCommissionRows.reduce((sum, u) => sum + u.comision_congelada, 0);
+  const houseCommissionByUser = new Map(houseCommissionRows.map((u) => [u.user_id, u]));
 
   return (
     <div style={{ animation: "fadeUp .3s ease" }}>
@@ -750,7 +780,19 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
               ) : (
                 <div style={{ fontSize: "30px", fontWeight: 700, color: "var(--warning)" }}>{fmtCOP(commissionBalance ?? 0)}</div>
               )}
-              <div style={{ fontSize: "11px", color: "var(--t3)", marginTop: "6px" }}>Comisión variable de dispersiones ya cobradas — se revierte si una dispersión se rechaza</div>
+              {!balanceLoading ? (
+                <div style={{ display: "flex", gap: "14px", marginTop: "8px", fontSize: "11px" }}>
+                  <span style={{ color: "var(--success)" }}>
+                    <i className="ti ti-circle-check" style={{ fontSize: "11px", marginRight: "3px" }} />
+                    Confirmada: {fmtCOP(totalComisionConfirmada)}
+                  </span>
+                  <span style={{ color: "var(--warning)" }}>
+                    <i className="ti ti-clock-hour-4" style={{ fontSize: "11px", marginRight: "3px" }} />
+                    Congelada: {fmtCOP(totalComisionCongelada)}
+                  </span>
+                </div>
+              ) : null}
+              <div style={{ fontSize: "11px", color: "var(--t3)", marginTop: "6px" }}>La congelada viene de dispersiones todavía pendientes — se revierte si se rechazan</div>
             </div>
 
             {/* Ganancia neta — (Total Recaudado + Total Dispersado) × Variable% */}
@@ -802,7 +844,7 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr>
-                      {["Usuario", "Total Recaudado", "Total Dispersado", "Tiquetes Recaudo", "Tiquetes Dispersión", "Tarifa Recaudo", "Tarifa Dispersión", "Variable", "Costos", "Ganancia"].map((h) => (
+                      {["Usuario", "Total Recaudado", "Total Dispersado", "Tiquetes Recaudo", "Tiquetes Dispersión", "Tarifa Recaudo", "Tarifa Dispersión", "Variable", "Costos", "Ganancia", "Comisión confirmada", "Comisión congelada"].map((h) => (
                         <th key={h} style={{ ...thStyle, textAlign: h === "Usuario" ? "left" : "right" }}>
                           {h}
                         </th>
@@ -810,23 +852,28 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
                     </tr>
                   </thead>
                   <tbody>
-                    {userSummaries.map((u) => (
-                      <tr key={u.user_id} onMouseEnter={(e) => (e.currentTarget.style.background = "var(--elevated)")} onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
-                        <td style={{ ...tdStyle, fontWeight: 600, color: "var(--t1)" }}>
-                          {u.full_name}
-                          <div style={{ fontSize: "11px", color: "var(--t3)", fontWeight: 400 }}>{u.email}</div>
-                        </td>
-                        <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{fmtCOP(u.total_recaudado)}</td>
-                        <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{fmtCOP(u.total_dispersado)}</td>
-                        <td style={{ ...tdStyle, textAlign: "right" }}>{u.tickets_recaudo}</td>
-                        <td style={{ ...tdStyle, textAlign: "right" }}>{u.tickets_dispersion}</td>
-                        <td style={{ ...tdStyle, textAlign: "right", fontSize: "12px", color: "var(--t3)" }}>{fmtCOP(u.tarifa_recaudo)}</td>
-                        <td style={{ ...tdStyle, textAlign: "right", fontSize: "12px", color: "var(--t3)" }}>{fmtCOP(u.tarifa_dispersion)}</td>
-                        <td style={{ ...tdStyle, textAlign: "right", fontSize: "12px", color: "var(--t3)" }}>{(u.variable_pct * 100).toFixed(2)}%</td>
-                        <td style={{ ...tdStyle, textAlign: "right", fontWeight: 600, color: "var(--error)", fontVariantNumeric: "tabular-nums" }}>{fmtCOP(u.costos)}</td>
-                        <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: "var(--success)", fontVariantNumeric: "tabular-nums" }}>{fmtCOP(u.ganancia)}</td>
-                      </tr>
-                    ))}
+                    {userSummaries.map((u) => {
+                      const house = houseCommissionByUser.get(u.user_id);
+                      return (
+                        <tr key={u.user_id} onMouseEnter={(e) => (e.currentTarget.style.background = "var(--elevated)")} onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+                          <td style={{ ...tdStyle, fontWeight: 600, color: "var(--t1)" }}>
+                            {u.full_name}
+                            <div style={{ fontSize: "11px", color: "var(--t3)", fontWeight: 400 }}>{u.email}</div>
+                          </td>
+                          <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{fmtCOP(u.total_recaudado)}</td>
+                          <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{fmtCOP(u.total_dispersado)}</td>
+                          <td style={{ ...tdStyle, textAlign: "right" }}>{u.tickets_recaudo}</td>
+                          <td style={{ ...tdStyle, textAlign: "right" }}>{u.tickets_dispersion}</td>
+                          <td style={{ ...tdStyle, textAlign: "right", fontSize: "12px", color: "var(--t3)" }}>{fmtCOP(u.tarifa_recaudo)}</td>
+                          <td style={{ ...tdStyle, textAlign: "right", fontSize: "12px", color: "var(--t3)" }}>{fmtCOP(u.tarifa_dispersion)}</td>
+                          <td style={{ ...tdStyle, textAlign: "right", fontSize: "12px", color: "var(--t3)" }}>{(u.variable_pct * 100).toFixed(2)}%</td>
+                          <td style={{ ...tdStyle, textAlign: "right", fontWeight: 600, color: "var(--error)", fontVariantNumeric: "tabular-nums" }}>{fmtCOP(u.costos)}</td>
+                          <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: "var(--success)", fontVariantNumeric: "tabular-nums" }}>{fmtCOP(u.ganancia)}</td>
+                          <td style={{ ...tdStyle, textAlign: "right", fontSize: "12px", color: "var(--success)", fontVariantNumeric: "tabular-nums" }}>{fmtCOP(house?.comision_confirmada ?? 0)}</td>
+                          <td style={{ ...tdStyle, textAlign: "right", fontSize: "12px", color: "var(--warning)", fontVariantNumeric: "tabular-nums" }}>{fmtCOP(house?.comision_congelada ?? 0)}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                   <tfoot>
                     <tr style={{ background: "var(--elevated)" }}>
@@ -840,6 +887,8 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
                       <td style={tdStyle}></td>
                       <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: "var(--error)" }}>{fmtCOP(totalCostos)}</td>
                       <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: "var(--success)" }}>{fmtCOP(totalGanancia)}</td>
+                      <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: "var(--success)" }}>{fmtCOP(totalComisionConfirmada)}</td>
+                      <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: "var(--warning)" }}>{fmtCOP(totalComisionCongelada)}</td>
                     </tr>
                   </tfoot>
                 </table>
