@@ -1,6 +1,7 @@
 // src/pages/Admin.tsx
 import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "../lib/supabase";
+import { useAuthStore } from "../store/authStore";
 import { useAdmin } from "../hooks/useAdmin";
 import { Modal } from "../components/ui/Modal";
 import { Input } from "../components/ui/Input";
@@ -229,6 +230,7 @@ interface UserSummaryRow {
 type TabKey = "usuarios" | "onboardings" | "saldos";
 
 export const AdminView: React.FC<Props> = ({ onToast }) => {
+  const { user } = useAuthStore();
   const { users, loading, error, createUser, updateTarifa, toggleActive, deleteUser } = useAdmin();
 
   const [tab, setTab] = useState<TabKey>("usuarios");
@@ -245,6 +247,11 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
   const [balanceError, setBalanceError] = useState<string | null>(null);
   const [userSummaries, setUserSummaries] = useState<UserSummaryRow[]>([]);
   const [syncing, setSyncing] = useState(false);
+  // Comisión variable de dispersiones ya acreditada a la cuenta admin
+  // (profiles.balance de este mismo usuario admin) — plata real que ya se
+  // puede retirar, a diferencia de "Ganancia neta acumulada" de abajo, que
+  // es un cálculo histórico de rentabilidad, no un saldo movible.
+  const [commissionBalance, setCommissionBalance] = useState<number | null>(null);
 
   // Formulario crear usuario
   const [form, setForm] = useState<CreateUserInput>({ email: "", password: "", full_name: "", role: "operator", tarifa_recibir: 1190, tarifa_enviar: 1190, tarifa_variable: 0.0012 });
@@ -283,9 +290,10 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
     setBalanceLoading(true);
     setBalanceError(null);
     try {
-      const [balanceRes, summaryRes] = await Promise.all([
+      const [balanceRes, summaryRes, profileRes] = await Promise.all([
         getBepayBalance(),
         supabase.rpc("get_admin_user_summary"),
+        user ? supabase.from("profiles").select("balance").eq("id", user.id).single() : Promise.resolve({ data: null, error: null }),
       ]);
 
       if (balanceRes && balanceRes.success && balanceRes.data) {
@@ -297,12 +305,14 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
 
       if (summaryRes.error) throw new Error(summaryRes.error.message);
       setUserSummaries((summaryRes.data ?? []) as UserSummaryRow[]);
+
+      setCommissionBalance(Number(profileRes?.data?.balance ?? 0));
     } catch (err) {
       setBalanceError(getErrorMessage(err));
     } finally {
       setBalanceLoading(false);
     }
-  }, []);
+  }, [user]);
 
   // ── Sincronizar transacciones pendientes con el estado real de Bepay ──
   const handleSyncPending = async () => {
@@ -712,7 +722,7 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
       {/* ── Tab Saldos (solo visible para admin) ── */}
       {tab === "saldos" ? (
         <React.Fragment>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginBottom: "18px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "14px", marginBottom: "18px" }}>
             {/* Saldo real de Bepay */}
             <div style={{ background: "var(--surface)", border: "1px solid var(--accent-ring)", borderRadius: "var(--radius)", padding: "20px", boxShadow: "var(--shadow)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
@@ -727,6 +737,20 @@ export const AdminView: React.FC<Props> = ({ onToast }) => {
                 <div style={{ fontSize: "30px", fontWeight: 700, color: "var(--t1)" }}>{fmtCOP(realBalance ?? 0)}</div>
               )}
               <div style={{ fontSize: "11px", color: "var(--t3)", marginTop: "6px" }}>Disponible en la cuenta principal (437)</div>
+            </div>
+
+            {/* Comisión variable de dispersiones ya acreditada — plata real, retirable */}
+            <div style={{ background: "var(--surface)", border: "1px solid var(--warning)", borderRadius: "var(--radius)", padding: "20px", boxShadow: "var(--shadow)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                <i className="ti ti-piggy-bank" style={{ color: "var(--warning)", fontSize: "16px" }} />
+                <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--t3)", textTransform: "uppercase", letterSpacing: ".5px" }}>Comisión acumulada por retirar</span>
+              </div>
+              {balanceLoading ? (
+                <div style={{ fontSize: "13px", color: "var(--t3)" }}>Consultando…</div>
+              ) : (
+                <div style={{ fontSize: "30px", fontWeight: 700, color: "var(--warning)" }}>{fmtCOP(commissionBalance ?? 0)}</div>
+              )}
+              <div style={{ fontSize: "11px", color: "var(--t3)", marginTop: "6px" }}>Comisión variable de dispersiones ya cobradas — se revierte si una dispersión se rechaza</div>
             </div>
 
             {/* Ganancia neta — (Total Recaudado + Total Dispersado) × Variable% */}

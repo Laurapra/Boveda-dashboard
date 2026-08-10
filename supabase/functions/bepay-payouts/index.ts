@@ -1,7 +1,7 @@
 // supabase/functions/bepay-payouts/index.ts
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { debitBalanceIfSufficient, creditBalance, applyPayoutStatusTransition } from "../_shared/balance.ts";
+import { debitBalanceIfSufficient, creditBalance, applyPayoutStatusTransition, getHouseAdminId } from "../_shared/balance.ts";
 
 const BEPAY_BASE = "https://app.bepay.com.co/api/v1";
 const corsHeaders = {
@@ -76,6 +76,38 @@ function onboardingErrorMessage(status: string | null): string {
   if (status === "pending") return "Tu onboarding está pendiente de revisión. El administrador debe aprobarlo antes de dispersar.";
   if (status === "in_review") return "Tu onboarding está en revisión. Espera la aprobación del administrador.";
   return "Tu onboarding fue rechazado. Corrige la información y envía una nueva solicitud.";
+}
+
+// Acredita la comisión variable (nuestro margen, no lo que cobra Bepay) al
+// saldo de la cuenta admin ("casa") apenas una dispersión queda en curso en
+// Bepay (PENDING) — así se va acumulando ahí para poder retirarla después.
+// Si la dispersión se termina rechazando, applyPayoutStatusTransition la
+// revierte (ver _shared/balance.ts). Nunca bloquea ni revierte la
+// dispersión del cliente si esto falla — es solo contabilidad interna.
+async function creditHouseCommission(
+  adminClient: ReturnType<typeof createClient>,
+  entityId: string,
+  dispersionUserId: string,
+  comisionVariable: number
+): Promise<void> {
+  if (comisionVariable <= 0) return;
+  try {
+    const houseId = await getHouseAdminId(adminClient);
+    if (!houseId) {
+      console.error("[creditHouseCommission] No se encontró ninguna cuenta admin — no se acreditó la comisión");
+      return;
+    }
+    await creditBalance(adminClient, houseId, comisionVariable);
+    await adminClient.from("audit_log").insert({
+      user_id: houseId,
+      action: "HOUSE_COMMISSION_CREDIT",
+      entity: "bepay_transaction",
+      entity_id: entityId,
+      metadata: { comision_variable: comisionVariable, dispersion_user_id: dispersionUserId },
+    });
+  } catch (err) {
+    console.error("[creditHouseCommission] Error acreditando comisión a la casa:", err instanceof Error ? err.message : String(err));
+  }
 }
 
 serve(async (req) => {
@@ -253,6 +285,13 @@ serve(async (req) => {
           metadata: { amount, key, concept, bank_name: bankName, success: bepayResult.success, comision_total: comisionTotal },
         });
 
+        // Solo si la dispersión quedó realmente en curso en Bepay — si
+        // bepayResult.success es false ya se reintegró todo al cliente
+        // arriba, así que no hay comisión que acreditarle a la casa.
+        if (bepayResult.success) {
+          await creditHouseCommission(adminClient, (txRow && txRow.id) || reference, user.id, comisionVariable);
+        }
+
         result = bepayResult;
         break;
       }
@@ -340,6 +379,10 @@ serve(async (req) => {
           metadata: { amount, concept, bank_code: payload.bank_code, success: bepayResult.success },
         });
 
+        if (bepayResult.success) {
+          await creditHouseCommission(adminClient, reference, user.id, comisionVariable);
+        }
+
         result = bepayResult;
         break;
       }
@@ -365,7 +408,7 @@ serve(async (req) => {
         if (statusResult.data && statusResult.data.status) {
           const { data: txRow } = await adminClient
             .from("bepay_transactions")
-            .select("id, user_id, amount, comision_total")
+            .select("id, user_id, amount, comision_total, tarifa_aplicada")
             .eq("bepay_ide", payoutId)
             .eq("type", "payout")
             .maybeSingle();
@@ -393,7 +436,7 @@ serve(async (req) => {
       case "sync_my_payouts": {
         const { data: myPending } = await adminClient
           .from("bepay_transactions")
-          .select("id, bepay_ide, user_id, amount, comision_total")
+          .select("id, bepay_ide, user_id, amount, comision_total, tarifa_aplicada")
           .eq("type", "payout")
           .eq("status", "PENDING")
           .eq("user_id", user.id)
@@ -434,7 +477,7 @@ serve(async (req) => {
 
         const { data: pending } = await adminClient
           .from("bepay_transactions")
-          .select("id, bepay_ide, user_id, amount, comision_total")
+          .select("id, bepay_ide, user_id, amount, comision_total, tarifa_aplicada")
           .eq("type", "payout")
           .eq("status", "PENDING")
           .limit(50);

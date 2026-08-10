@@ -58,8 +58,20 @@ export const ReportesView: React.FC<Props> = ({ fmt }) => {
   const [txns, setTxns] = useState<TxRow[]>([]);
   const [loadingTxns, setLoadingTxns] = useState(true);
   const [selected, setSelected] = useState<ReportType>("extracto");
-  const [desde, setDesde] = useState("2026-06-01");
-  const [hasta, setHasta] = useState("2026-07-31");
+  // Antes esto era un rango fijo ("2026-06-01" a "2026-07-31") que quedó
+  // grabado en el código — apenas pasaba julio, el reporte se veía vacío
+  // porque el filtro excluía todo lo del mes actual en adelante. Ahora
+  // arranca en el primer día del mes actual y hoy, calculado en cada carga
+  // de la página (no al momento de escribir el código), así nunca queda
+  // desactualizado.
+  const [desde, setDesde] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+  });
+  const [hasta, setHasta] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
   const [status, setStatus] = useState("");
 
   // ── Cargar transacciones reales ─────────────────────────────

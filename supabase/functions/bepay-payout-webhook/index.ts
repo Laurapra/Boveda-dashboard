@@ -105,7 +105,7 @@ serve(async (req) => {
     // bepay-payouts al crearla — ver extractPayoutId en ese archivo) ──────
     const { data: txRow } = await adminClient
       .from("bepay_transactions")
-      .select("id, user_id, amount, comision_total")
+      .select("id, user_id, amount, comision_total, tarifa_aplicada")
       .eq("bepay_ide", String(payoutId))
       .eq("type", "payout")
       .single();
