@@ -38,13 +38,13 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────── */
-/* TABLES - Make horizontal scroll less needed                         */
+/* TABLES - Make responsive with horizontal scroll (NOT hidden columns) */
 /* ─────────────────────────────────────────────────────────────────── */
 
 @media (max-width: 768px) {
-  /* Table: make it fit */
+  /* Table: use auto width to allow horizontal scroll */
   table {
-    width: 100% !important;
+    width: auto !important;
     font-size: 12px !important;
     border-collapse: collapse !important;
   }
@@ -57,12 +57,6 @@
   table td {
     padding: 8px 6px !important;
     word-break: break-word !important;
-  }
-
-  /* Hide columns that take too much space in mobile */
-  table th:nth-child(n+5),
-  table td:nth-child(n+5) {
-    display: none !important;
   }
 
   /* Alternating row colors for better readability */
@@ -257,12 +251,6 @@
   table th,
   table td {
     padding: 6px 4px !important;
-  }
-
-  /* Hide even more columns on very small screens */
-  table th:nth-child(n+4),
-  table td:nth-child(n+4) {
-    display: none !important;
   }
 
   /* Button: smaller on tiny screens */
