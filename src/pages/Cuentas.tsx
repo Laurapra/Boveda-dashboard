@@ -6,6 +6,7 @@ import { getBanks, getDocumentTypes, lookupBrebKey, syncMyPayouts } from "../lib
 import { StatusBadge } from "../components/ui/StatusBadge";
 import { Modal } from "../components/ui/Modal";
 import type { ToastType } from "../types";
+import "./Cuentas.css";
 
 interface Props {
   onToast: (type: ToastType, title: string, msg: string) => void;
@@ -523,7 +524,7 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
   });
 
   return (
-    <div style={{ animation: "fadeUp .3s ease" }}>
+    <div className="ben">
       {/* Encabezado */}
       <div style={{ marginBottom: "18px" }}>
         <h1 style={{ fontSize: "23px", fontWeight: 700, letterSpacing: "-.4px", color: "var(--t1)" }}>Beneficiarios</h1>
@@ -532,13 +533,13 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
 
       <React.Fragment>
           {/* Stats */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginBottom: "16px" }}>
+          <div className="ben-stats">
             {[
               { label: "Total Beneficiarios", value: bens.length, icon: "ti-users", color: "var(--accent)" },
               { label: "Total Cuentas", value: bens.reduce((s, b) => s + b.accounts.length, 0), icon: "ti-credit-card", color: "var(--success)" },
             ].map((s) => (
-              <div key={s.label} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "14px 18px", display: "flex", alignItems: "center", gap: "14px", boxShadow: "var(--shadow)" }}>
-                <div style={{ width: "40px", height: "40px", borderRadius: "10px", background: "var(--elevated)", display: "grid", placeItems: "center", color: s.color, flexShrink: 0 }}>
+              <div key={s.label} className="ben-stat">
+                <div className="ben-stat__icon" style={{ color: s.color }}>
                   <i className={"ti " + s.icon} style={{ fontSize: "18px" }} />
                 </div>
                 <div>
@@ -550,30 +551,32 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
           </div>
 
           {/* Barra búsqueda */}
-          <div style={{ display: "flex", gap: "9px", marginBottom: "14px" }}>
-            <div style={{ position: "relative", flex: 1 }}>
-              <i className="ti ti-search" style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "var(--t3)", fontSize: "14px" }} />
+          <div className="ben-toolbar">
+            <div className="ben-toolbar__search">
+              <i className="ti ti-search" />
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por nombre, documento o banco..." style={{ ...inputStyle, paddingLeft: "30px" }} />
             </div>
-            <button onClick={() => setQuery("")} style={{ padding: "8px 14px", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--surface)", color: "var(--t2)", cursor: "pointer", fontSize: "13px" }}>
-              Limpiar
-            </button>
-            <button onClick={loadBens} style={{ padding: "8px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--surface)", color: "var(--t2)", cursor: "pointer" }}>
-              <i className="ti ti-refresh" />
-            </button>
-            <button
-              onClick={() => {
-                setCtaForm({ tipo: "", banco: "", num: "", llave: "" });
-                setNewBenOpen(true);
-              }}
-              style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "8px 14px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: "var(--radius-sm)", fontWeight: 600, fontSize: "13px", cursor: "pointer" }}
-            >
-              <i className="ti ti-plus" />
-              Nuevo Beneficiario
-            </button>
+            <div className="ben-toolbar__actions">
+              <button onClick={() => setQuery("")} style={{ padding: "8px 14px", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--surface)", color: "var(--t2)", cursor: "pointer", fontSize: "13px" }}>
+                Limpiar
+              </button>
+              <button onClick={loadBens} style={{ padding: "8px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--surface)", color: "var(--t2)", cursor: "pointer" }}>
+                <i className="ti ti-refresh" />
+              </button>
+              <button
+                onClick={() => {
+                  setCtaForm({ tipo: "", banco: "", num: "", llave: "" });
+                  setNewBenOpen(true);
+                }}
+                style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "8px 14px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: "var(--radius-sm)", fontWeight: 600, fontSize: "13px", cursor: "pointer" }}
+              >
+                <i className="ti ti-plus" />
+                Nuevo Beneficiario
+              </button>
+            </div>
           </div>
 
-          <div style={{ marginBottom: "12px", fontSize: "12px", fontWeight: 600, color: "var(--t3)", textTransform: "uppercase", letterSpacing: ".5px" }}>Lista de Beneficiarios</div>
+          <div className="ben-listTitle">Lista de Beneficiarios</div>
 
           {/* Lista */}
           {bensLoading ? (
@@ -592,37 +595,32 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
             filteredBens.map((b) => {
               const isOpen = openIds.has(b.id);
               return (
-                <div key={b.id} style={{ border: "1px solid var(--border)", borderRadius: "var(--radius)", marginBottom: "10px", overflow: "hidden", background: "var(--surface)" }}>
-                  <div
-                    onClick={() => toggleOpen(b.id)}
-                    style={{ display: "flex", alignItems: "center", padding: "12px 16px", cursor: "pointer", gap: "12px" }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--elevated)")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                  >
-                    <div style={{ width: "34px", height: "34px", borderRadius: "50%", background: "var(--accent-dim)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px", fontWeight: 600, color: "var(--accent)", flexShrink: 0 }}>
-                      {iniciales(b.full_name)}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: "13px", fontWeight: 500, color: "var(--t1)" }}>{b.full_name}</div>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "3px", flexWrap: "wrap" }}>
-                        <span style={{ background: "var(--elevated)", border: "1px solid var(--border)", borderRadius: "3px", padding: "1px 5px", fontSize: "9px", color: "var(--t3)" }}>{b.doc_type}</span>
-                        <span style={{ fontSize: "10px", color: "var(--t3)" }}>{b.doc_number}</span>
-                        {b.phone ? (
-                          <React.Fragment>
-                            <span style={{ fontSize: "10px", color: "var(--t3)" }}>·</span>
-                            <span style={{ fontSize: "10px", color: "var(--t3)" }}>+57 {b.phone}</span>
-                          </React.Fragment>
-                        ) : null}
-                        {b.email ? (
-                          <React.Fragment>
-                            <span style={{ fontSize: "10px", color: "var(--t3)" }}>·</span>
-                            <span style={{ fontSize: "10px", color: "var(--t3)" }}>{b.email}</span>
-                          </React.Fragment>
-                        ) : null}
+                <div key={b.id} className="ben-card">
+                  <div className="ben-card__head" onClick={() => toggleOpen(b.id)}>
+                    <div className="ben-card__avatar">{iniciales(b.full_name)}</div>
+                    <div className="ben-card__main">
+                      <div className="ben-card__name">{b.full_name}</div>
+                      <div className="ben-card__chips">
+                        <div className="ben-chip">
+                          <span className="ben-chip__k">Documento</span>
+                          <span className="ben-chip__v ben-chip__v--mono">{b.doc_type} {b.doc_number}</span>
+                        </div>
+                        <div className="ben-chip">
+                          <span className="ben-chip__k">Celular</span>
+                          <span className="ben-chip__v">{b.phone ? `+57 ${b.phone}` : "—"}</span>
+                        </div>
+                        <div className="ben-chip">
+                          <span className="ben-chip__k">Correo</span>
+                          <span className="ben-chip__v">{b.email || "—"}</span>
+                        </div>
+                        <div className="ben-chip">
+                          <span className="ben-chip__k">Registrado</span>
+                          <span className="ben-chip__v">{formatDate(b.created_at)}</span>
+                        </div>
                       </div>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
-                      <span style={{ background: "var(--elevated)", border: "1px solid var(--border)", borderRadius: "20px", fontSize: "11px", color: "var(--t2)", padding: "2px 9px" }}>
+                    <div className="ben-card__side">
+                      <span className="ben-card__count">
                         {b.accounts.length} cuenta{b.accounts.length !== 1 ? "s" : ""}
                       </span>
                       <button
@@ -639,10 +637,10 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
                   </div>
 
                   {isOpen ? (
-                    <div style={{ borderTop: "1px solid var(--border)" }}>
-                      <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--border)" }}>
-                        <div style={{ fontSize: "10px", fontWeight: 600, color: "var(--t3)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "10px" }}>Datos del Titular</div>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "8px" }}>
+                    <div className="ben-card__body">
+                      <div className="ben-section">
+                        <div className="ben-section__title">Datos del Titular</div>
+                        <div className="ben-titularGrid">
                           {[
                             { label: "Nombre completo", value: b.full_name, mono: false },
                             { label: "Tipo documento", value: b.doc_type, mono: false },
@@ -650,18 +648,21 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
                             { label: "Celular", value: b.phone ? "+57 " + b.phone : "—", mono: false },
                             { label: "Correo", value: b.email || "—", mono: false },
                             { label: "Registrado", value: formatDate(b.created_at), mono: false },
+                            { label: "ID beneficiario", value: b.id, mono: true },
+                            { label: "Cuentas activas", value: String(b.accounts.filter((c) => c.is_active).length), mono: false },
+                            { label: "Total cuentas", value: String(b.accounts.length), mono: false },
                           ].map((row) => (
-                            <div key={row.label} style={{ background: "var(--elevated)", borderRadius: "var(--radius-sm)", padding: "8px 11px" }}>
-                              <div style={{ fontSize: "9px", color: "var(--t3)", marginBottom: "2px" }}>{row.label}</div>
-                              <div style={{ fontSize: "12px", fontWeight: 500, color: "var(--t1)", fontFamily: row.mono ? "var(--mono)" : undefined }}>{row.value}</div>
+                            <div key={row.label} className="ben-titularItem">
+                              <div className="ben-titularItem__k">{row.label}</div>
+                              <div className={"ben-titularItem__v" + (row.mono ? " ben-titularItem__v--mono" : "")}>{row.value}</div>
                             </div>
                           ))}
                         </div>
                       </div>
 
-                      <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--border)" }}>
-                        <div style={{ fontSize: "10px", fontWeight: 600, color: "var(--t3)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "10px" }}>Enviado a este beneficiario</div>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "8px" }}>
+                      <div className="ben-section">
+                        <div className="ben-section__title">Enviado a este beneficiario</div>
+                        <div className="ben-sentGrid">
                           {(() => {
                             const stats = sentStatsByDoc.get(b.doc_number.trim()) ?? { hoy: 0, mes: 0, anio: 0, hoyCount: 0, mesCount: 0, anioCount: 0 };
                             return [
@@ -669,18 +670,18 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
                               { label: "Este mes", amount: stats.mes, count: stats.mesCount },
                               { label: "Este año", amount: stats.anio, count: stats.anioCount },
                             ].map((row) => (
-                              <div key={row.label} style={{ background: "var(--elevated)", borderRadius: "var(--radius-sm)", padding: "8px 11px" }}>
-                                <div style={{ fontSize: "9px", color: "var(--t3)", marginBottom: "2px" }}>{row.label}</div>
-                                <div style={{ fontSize: "13px", fontWeight: 600, color: row.amount > 0 ? "var(--t1)" : "var(--t3)" }}>{fmtCOP(row.amount)}</div>
-                                <div style={{ fontSize: "9px", color: "var(--t3)", marginTop: "1px" }}>{row.count} dispersión{row.count !== 1 ? "es" : ""}</div>
+                              <div key={row.label} className="ben-sentItem">
+                                <div className="ben-sentItem__k">{row.label}</div>
+                                <div className="ben-sentItem__v" style={{ color: row.amount > 0 ? "var(--t1)" : "var(--t3)" }}>{fmtCOP(row.amount)}</div>
+                                <div className="ben-sentItem__c">{row.count} dispersión{row.count !== 1 ? "es" : ""}</div>
                               </div>
                             ));
                           })()}
                         </div>
                       </div>
 
-                      <div style={{ padding: "14px 16px" }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+                      <div className="ben-section">
+                        <div className="ben-accountsHead">
                           <span style={{ fontSize: "11px", fontWeight: 500, color: "var(--t2)" }}>Cuentas bancarias</span>
                           <button
                             onClick={(e) => {
@@ -697,36 +698,64 @@ export const CuentasView: React.FC<Props> = ({ onToast }) => {
                         {b.accounts.length === 0 ? (
                           <div style={{ textAlign: "center", padding: "20px", color: "var(--t3)", fontSize: "12px" }}>Sin cuentas registradas</div>
                         ) : (
-                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
-                            <thead>
-                              <tr>
-                                {["Banco", "Tipo", "Número / Llave", "Estado", ""].map((h) => (
-                                  <th key={h} style={{ padding: "7px 10px", fontSize: "10px", fontWeight: 600, textTransform: "uppercase", color: "var(--t3)", borderBottom: "1px solid var(--border)", textAlign: "left" }}>
-                                    {h}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
+                          <>
+                            <div className="ben-accountCards">
                               {b.accounts.map((c) => (
-                                <tr key={c.id}>
-                                  <td style={{ padding: "9px 10px", borderBottom: "1px solid var(--border)", color: "var(--t1)" }}>{c.bank_name}</td>
-                                  <td style={{ padding: "9px 10px", borderBottom: "1px solid var(--border)" }}>
-                                    <StatusBadge value={c.account_type} />
-                                  </td>
-                                  <td style={{ padding: "9px 10px", borderBottom: "1px solid var(--border)", fontFamily: "var(--mono)", fontSize: "11px", color: "var(--t2)" }}>{c.account_key}</td>
-                                  <td style={{ padding: "9px 10px", borderBottom: "1px solid var(--border)" }}>
-                                    <StatusBadge value={c.is_active ? "Activa" : "Inactiva"} />
-                                  </td>
-                                  <td style={{ padding: "9px 10px", borderBottom: "1px solid var(--border)" }}>
-                                    <button onClick={() => handleDeleteCta(c.id, c.bank_name)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--t3)", fontSize: "14px" }}>
-                                      <i className="ti ti-trash" />
-                                    </button>
-                                  </td>
-                                </tr>
+                                <div key={c.id} className="ben-accountCard">
+                                  <div className="ben-accountCard__row">
+                                    <span className="ben-accountCard__k">Banco</span>
+                                    <span className="ben-accountCard__v">{c.bank_name || "—"}</span>
+                                  </div>
+                                  <div className="ben-accountCard__row">
+                                    <span className="ben-accountCard__k">Tipo</span>
+                                    <span className="ben-accountCard__v"><StatusBadge value={c.account_type} /></span>
+                                  </div>
+                                  <div className="ben-accountCard__row">
+                                    <span className="ben-accountCard__k">Número / Llave</span>
+                                    <span className="ben-accountCard__v ben-accountCard__v--mono">{c.account_key}</span>
+                                  </div>
+                                  <div className="ben-accountCard__row">
+                                    <span className="ben-accountCard__k">Estado</span>
+                                    <span className="ben-accountCard__v"><StatusBadge value={c.is_active ? "Activa" : "Inactiva"} /></span>
+                                  </div>
+                                  <div className="ben-accountCard__row">
+                                    <span className="ben-accountCard__k">ID cuenta</span>
+                                    <span className="ben-accountCard__v ben-accountCard__v--mono">{c.id}</span>
+                                  </div>
+                                  <button onClick={() => handleDeleteCta(c.id, c.bank_name)} style={{ background: "none", border: "1px solid var(--border)", borderRadius: 8, cursor: "pointer", color: "var(--t3)", fontSize: 13, padding: "8px", marginTop: 4 }}>
+                                    <i className="ti ti-trash" /> Eliminar cuenta
+                                  </button>
+                                </div>
                               ))}
-                            </tbody>
-                          </table>
+                            </div>
+                            <div className="ben-accountsTableWrap">
+                              <table className="ben-accountsTable">
+                                <thead>
+                                  <tr>
+                                    {["Banco", "Tipo", "Número / Llave", "Estado", "ID", ""].map((h) => (
+                                      <th key={h}>{h}</th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {b.accounts.map((c) => (
+                                    <tr key={c.id}>
+                                      <td style={{ color: "var(--t1)" }}>{c.bank_name}</td>
+                                      <td><StatusBadge value={c.account_type} /></td>
+                                      <td style={{ fontFamily: "var(--mono)", fontSize: "11px", color: "var(--t2)" }}>{c.account_key}</td>
+                                      <td><StatusBadge value={c.is_active ? "Activa" : "Inactiva"} /></td>
+                                      <td style={{ fontFamily: "var(--mono)", fontSize: "10px", color: "var(--t3)" }}>{c.id}</td>
+                                      <td>
+                                        <button onClick={() => handleDeleteCta(c.id, c.bank_name)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--t3)", fontSize: "14px" }}>
+                                          <i className="ti ti-trash" />
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </>
                         )}
                       </div>
                     </div>

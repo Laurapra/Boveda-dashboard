@@ -1,7 +1,8 @@
 // src/components/layout/Sidebar.tsx
-import React from "react";
+import React, { useEffect } from "react";
 import { useAuthStore } from "../../store/authStore";
 import Logo from "../../assets/Logo.png";
+import "./SideBar.css";
 
 export type ViewKey =
   | "home"
@@ -20,6 +21,8 @@ interface Props {
   onNav: (v: ViewKey) => void;
   theme: "dark" | "light";
   onToggleTheme: () => void;
+  open: boolean;
+  onClose: () => void;
 }
 
 interface NavItem {
@@ -30,10 +33,9 @@ interface NavItem {
   icon: React.ReactNode;
 }
 
-// ✅ Restaurado: genera el SVG único de cada ítem, usando el path que recibe
 const Ico = (path: React.ReactNode) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-    width="17" height="17" style={{ flexShrink: 0 }}>
+    width="18" height="18" style={{ flexShrink: 0 }}>
     {path}
   </svg>
 );
@@ -78,123 +80,151 @@ const NAV: NavItem[] = [
   {
     key: "admin", label: "Panel Admin", section: "Administración",
     icon: Ico(<><circle cx="12" cy="8" r="3" /><path d="M3 20c0-4 4-7 9-7s9 3 9 7" strokeLinecap="round" /><path d="M16 3.13a4 4 0 010 7.75" strokeLinecap="round" /></>),
-  }
+  },
 ];
 
-export const Sidebar: React.FC<Props> = ({ active, onNav, theme, onToggleTheme }) => {
+export const Sidebar: React.FC<Props> = ({
+  active,
+  onNav,
+  theme,
+  onToggleTheme,
+  open,
+  onClose,
+}) => {
   const { user, signOut } = useAuthStore();
 
   const initials = user?.full_name
     ?.split(" ").slice(0, 2).map((n) => n[0]).join("").toUpperCase() ?? "??";
 
+  useEffect(() => {
+    if (!open) return;
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+
+    const lockScroll = () => {
+      if (window.matchMedia("(max-width: 860px)").matches) {
+        document.body.style.overflow = "hidden";
+      }
+    };
+
+    lockScroll();
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", lockScroll);
+
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", lockScroll);
+      document.body.style.overflow = "";
+    };
+  }, [open, onClose]);
+
+  const handleNav = (key: ViewKey) => {
+    onNav(key);
+    onClose();
+  };
+
   return (
-    <aside style={{
-      width: "248px", flexShrink: 0,
-      background: "var(--surface)",
-      borderRight: "1px solid var(--border)",
-      display: "flex", flexDirection: "column",
-      height: "100vh", position: "sticky", top: 0,
-    }}>
+    <>
+      <div
+        className={`sidebar__overlay${open ? " sidebar__overlay--open" : ""}`}
+        onClick={onClose}
+        aria-hidden={!open}
+      />
 
-      {/* ── Logo real de la empresa ── */}
-      <div style={{ display: "flex", alignItems: "center", gap: "11px", padding: "20px 20px 18px", borderBottom: "1px solid var(--border)" }}>
-        <div style={{ width: "36px", height: "36px", borderRadius: "9px", overflow: "hidden", flexShrink: 0 }}>
-          <img src={Logo} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
-        </div>
-        <div>
-          <div style={{ fontWeight: 700, fontSize: "15px", letterSpacing: "-.2px" }}>RAMPLIX</div>
-          <div style={{ fontSize: "10.5px", color: "var(--t3)", letterSpacing: ".3px" }}>Portal · Ramplix</div>
-        </div>
-      </div>
-
-      {/* ── Nav ── */}
-      <nav style={{ flex: 1, overflowY: "auto", padding: "10px 10px 0" }}>
-        {NAV.filter((item) => item.key !== "admin" || user?.role === "admin").map((item) => {
-          const isActive = active === item.key;
-          return (
-            <React.Fragment key={item.key}>
-              {item.section && (
-                <div style={{ fontSize: "10px", fontWeight: 600, color: "var(--t3)", padding: "14px 10px 4px", letterSpacing: ".07em", textTransform: "uppercase" }}>
-                  {item.section}
-                </div>
-              )}
-              <button
-                onClick={() => onNav(item.key)}
-                style={{
-                  display: "flex", alignItems: "center", gap: "10px",
-                  padding: "9px 10px", width: "100%",
-                  border: "none", cursor: "pointer",
-                  fontSize: "13px", textAlign: "left",
-                  borderRadius: "var(--radius-sm)",
-                  transition: "background .1s, color .1s",
-                  background: isActive ? "var(--accent-dim)" : "transparent",
-                  color: isActive ? "var(--accent)" : "var(--t2)",
-                  fontWeight: isActive ? 500 : 400,
-                  position: "relative",
-                  marginBottom: "1px",
-                }}
-              >
-                {isActive && (
-                  <span style={{ position: "absolute", left: 0, top: "50%", transform: "translateY(-50%)", width: "3px", height: "18px", background: "var(--accent)", borderRadius: "0 3px 3px 0" }} />
-                )}
-                {item.icon}
-                <span style={{ flex: 1 }}>{item.label}</span>
-                {item.badge !== undefined && (
-                  <span style={{ background: "var(--accent)", color: "#fff", borderRadius: "20px", fontSize: "10px", padding: "1px 7px", fontWeight: 700 }}>
-                    {item.badge}
-                  </span>
-                )}
-              </button>
-            </React.Fragment>
-          );
-        })}
-      </nav>
-
-      {/* ── Footer ── */}
-      <div style={{ borderTop: "1px solid var(--border)", padding: "12px" }}>
-        <button
-          onClick={onToggleTheme}
-          style={{ display: "flex", alignItems: "center", gap: "9px", width: "100%", padding: "8px 10px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--elevated)", color: "var(--t2)", fontSize: "12.5px", fontWeight: 500, marginBottom: "8px", cursor: "pointer", transition: ".14s" }}
-        >
-          {theme === "dark" ? (
-            <>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15">
-                <circle cx="12" cy="12" r="4" />
-                <path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19" strokeLinecap="round" />
-              </svg>
-              Modo claro
-            </>
-          ) : (
-            <>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15">
-                <path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z" strokeLinejoin="round" />
-              </svg>
-              Modo oscuro
-            </>
-          )}
-        </button>
-
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px", borderRadius: "var(--radius-sm)" }}>
-          <div style={{ width: "30px", height: "30px", borderRadius: "8px", background: "linear-gradient(135deg, #2dd4bf, var(--accent))", display: "grid", placeItems: "center", fontWeight: 700, fontSize: "12px", color: "#fff", flexShrink: 0 }}>
-            {initials}
-          </div>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: "12.5px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {user?.full_name ?? "Usuario"}
+      <aside
+        className={`sidebar${open ? " sidebar--open" : ""}`}
+        aria-label="Navegación principal"
+      >
+        <div className="sidebar__header">
+          <div className="sidebar__brand">
+            <div className="sidebar__logoWrap">
+              <img src={Logo} alt="Ramplix" />
             </div>
-            <div style={{ fontSize: "11px", color: "var(--t3)" }}>{user?.role}</div>
+            <div>
+              <div className="sidebar__brandName">RAMPLIX</div>
+              <div className="sidebar__brandSub">Portal · Operaciones</div>
+            </div>
           </div>
+
           <button
-            onClick={signOut}
-            title="Cerrar sesión"
-            style={{ width: "28px", height: "28px", borderRadius: "7px", display: "grid", placeItems: "center", color: "var(--t3)", border: "1px solid var(--border)", background: "none", cursor: "pointer", flexShrink: 0 }}
+            type="button"
+            className="sidebar__close"
+            onClick={onClose}
+            aria-label="Cerrar menú"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
-              <path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" strokeLinecap="round" strokeLinejoin="round" />
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
+              <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
             </svg>
           </button>
         </div>
-      </div>
-    </aside>
+
+        <nav className="sidebar__nav">
+          {NAV.filter((item) => item.key !== "admin" || user?.role === "admin").map((item) => {
+            const isActive = active === item.key;
+            return (
+              <React.Fragment key={item.key}>
+                {item.section && (
+                  <div className="sidebar__section">{item.section}</div>
+                )}
+                <button
+                  type="button"
+                  className={`sidebar__item${isActive ? " sidebar__item--active" : ""}`}
+                  onClick={() => handleNav(item.key)}
+                  aria-current={isActive ? "page" : undefined}
+                >
+                  {item.icon}
+                  <span className="sidebar__itemLabel">{item.label}</span>
+                  {item.badge !== undefined && (
+                    <span className="sidebar__badge">{item.badge}</span>
+                  )}
+                </button>
+              </React.Fragment>
+            );
+          })}
+        </nav>
+
+        <div className="sidebar__footer">
+          <button type="button" className="sidebar__themeBtn" onClick={onToggleTheme}>
+            {theme === "dark" ? (
+              <>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
+                  <circle cx="12" cy="12" r="4" />
+                  <path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19" strokeLinecap="round" />
+                </svg>
+                Modo claro
+              </>
+            ) : (
+              <>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
+                  <path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z" strokeLinejoin="round" />
+                </svg>
+                Modo oscuro
+              </>
+            )}
+          </button>
+
+          <div className="sidebar__user">
+            <div className="sidebar__avatar">{initials}</div>
+            <div className="sidebar__userMeta">
+              <div className="sidebar__userName">{user?.full_name ?? "Usuario"}</div>
+              <div className="sidebar__userRole">{user?.role}</div>
+            </div>
+            <button
+              type="button"
+              className="sidebar__logout"
+              onClick={signOut}
+              title="Cerrar sesión"
+              aria-label="Cerrar sesión"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15">
+                <path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </aside>
+    </>
   );
 };
