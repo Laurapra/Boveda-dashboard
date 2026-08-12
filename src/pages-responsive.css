@@ -1,0 +1,286 @@
+/* Pages Responsive Improvements - Specific page layouts */
+
+/* ─────────────────────────────────────────────────────────────────── */
+/* HOME PAGE - Two column → One column in mobile                       */
+/* ─────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  /* Home: Grid 2 columns (260px + 1fr) → 1 column */
+  div[style*="gridTemplateColumns: \"260px 1fr\""],
+  div[style*="gridTemplateColumns: '260px 1fr'"] {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  /* Donut should be full width above KPIs */
+  div[style*="display: \"flex\""][style*="flexDirection: \"column\""][style*="alignItems: \"center\""][style*="justifyContent: \"center\""][style*="padding: \"32px"],
+  div[style*="display: flex"][style*="flex-direction: column"][style*="align-items: center"][style*="justify-content: center"][style*="padding: 32px"] {
+    padding: 24px !important;
+  }
+
+  /* KPI section: padding reduced */
+  div[style*="padding: \"32px 36px\""],
+  div[style*="padding: 32px 36px"] {
+    padding: 16px !important;
+  }
+
+  /* Remove borderRight from donut */
+  div[style*="borderRight: \"1px solid var(--border)\""],
+  div[style*="borderRight: 1px solid var(--border)"] {
+    border-right: none !important;
+    border-bottom: 1px solid var(--border) !important;
+    padding-bottom: 16px !important;
+    margin-bottom: 16px !important;
+  }
+
+  /* SVG: reduce size */
+  svg[viewBox="0 0 220 220"],
+  svg[width="200"][height="200"] {
+    width: 140px !important;
+    height: 140px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Extra small: further reduce */
+  svg[width="140"][height="140"] {
+    width: 100px !important;
+    height: 100px !important;
+  }
+
+  div[style*="fontSize: \"38px\""] {
+    font-size: 24px !important;
+  }
+
+  div[style*="fontSize: \"22px\""] {
+    font-size: 16px !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────── */
+/* REPORTES PAGE - Filters, dates, status, stats → vertical            */
+/* ─────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  /* Filters row: make vertical */
+  div[style*="display: \"flex\""][style*="gap: \"12px\""][style*="marginBottom"],
+  div[style*="display: flex"][style*="gap: 12px"][style*="margin-bottom"] {
+    flex-direction: column !important;
+    gap: 8px !important;
+  }
+
+  /* Date inputs: full width */
+  input[type="date"],
+  input[type="text"],
+  select {
+    width: 100% !important;
+  }
+
+  /* Filter containers: stack */
+  div[style*="display: \"flex\""][style*="alignItems: \"center\""],
+  div[style*="display: flex"][style*="align-items: center"] {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+
+  /* Statistics cards: responsive */
+  div[style*="gridTemplateColumns: \"repeat("],
+  div[style*="gridTemplateColumns: 'repeat("] {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  /* Buttons: full width or flex equal */
+  button[style*="gap: \"7px\""] {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  /* Status badges: wrap properly */
+  div[style*="display: \"flex\""][style*="gap: \"6px\""],
+  div[style*="display: flex"][style*="gap: 6px"] {
+    flex-wrap: wrap !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────── */
+/* GENERAL: Prevent overflow & ensure visibility                       */
+/* ─────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  /* All grids: responsive */
+  div[style*="display: \"grid\""],
+  div[style*="display: grid"] {
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+  }
+
+  /* Flex containers: safe wrapping */
+  div[style*="display: \"flex\""],
+  div[style*="display: flex"] {
+    flex-wrap: wrap !important;
+  }
+
+  /* Cards: full width, safe padding */
+  div[style*="background: \"var(--surface)\""][style*="border: \"1px solid"],
+  div[style*="background: var(--surface)"][style*="border: 1px solid"] {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+  }
+
+  /* Text elements: safe wrapping */
+  p, span, h1, h2, h3, h4, h5, h6 {
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+  }
+
+  /* Table: responsive */
+  table {
+    width: 100% !important;
+    font-size: 12px !important;
+  }
+
+  table th, table td {
+    padding: 8px 10px !important;
+    word-break: break-word !important;
+  }
+
+  /* Large numbers: compress slightly */
+  span[style*="fontVariantNumeric: \"tabular-nums\""],
+  span[style*="fontVariantNumeric: tabular-nums"] {
+    font-size: 0.95em !important;
+  }
+
+  /* Icons: maintain readable size */
+  svg[width="17"],
+  svg[width="15"],
+  i[class*="ti"] {
+    font-size: 15px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Extra aggressive on small phones */
+  div[style*="padding: \"16px\""],
+  div[style*="padding: 16px"] {
+    padding: 12px !important;
+  }
+
+  div[style*="gap: \"10px\""],
+  div[style*="gap: 10px"] {
+    gap: 6px !important;
+  }
+
+  table {
+    font-size: 11px !important;
+  }
+
+  table th, table td {
+    padding: 6px 8px !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────── */
+/* BILATERAL/PAIRED ELEMENTS - Side by side → Stack vertically         */
+/* ─────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  /* Flex row with gap: stack vertically */
+  div[style*="display: \"flex\""][style*="flexDirection: \"row\""][style*="gap:"],
+  div[style*="display: flex"][style*="flex-direction: row"][style*="gap:"] {
+    flex-direction: column !important;
+    width: 100% !important;
+  }
+
+  /* Grid 1fr 1fr: collapse to 1 column */
+  div[style*="gridTemplateColumns: \"1fr 1fr\""],
+  div[style*="gridTemplateColumns: '1fr 1fr'"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Any grid with multiple columns: responsive */
+  div[style*="gridTemplateColumns: \"1fr 1fr 1fr\""],
+  div[style*="gridTemplateColumns: 'repeat(2"],
+  div[style*="gridTemplateColumns: 'repeat(3"] {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  /* Rows with fixed widths: make flexible */
+  div[style*="display: \"flex\""][style*="width: \""],
+  div[style*="display: flex"][style*="width:"] {
+    width: 100% !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────── */
+/* FORMS - Input full width, labels block                              */
+/* ─────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  /* Form groups: stack */
+  label {
+    display: block !important;
+    margin-bottom: 6px !important;
+    font-size: 13px !important;
+  }
+
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="date"],
+  input[type="time"],
+  input[type="search"],
+  textarea,
+  select {
+    width: 100% !important;
+    max-width: 100% !important;
+    font-size: 16px !important;
+    padding: 10px 12px !important;
+  }
+
+  /* Remove padding from input wrapper */
+  div[style*="display: \"flex\""][style*="flexDirection: \"column\""] input,
+  div[style*="display: flex"][style*="flex-direction: column"] input {
+    margin-top: 4px !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────── */
+/* BUTTONS - Touchable, responsive sizing                              */
+/* ─────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  /* Button groups: full width or flex equal */
+  button[style*="padding: \"9px 14px\""],
+  button[style*="padding: 9px 14px"],
+  button[style*="padding: \"8px 12px\""],
+  button[style*="padding: 8px 12px"] {
+    padding: 10px 12px !important;
+    font-size: 13px !important;
+    min-height: 40px !important;
+  }
+
+  /* Buttons in flex container: equal width */
+  div[style*="display: \"flex\""] button,
+  div[style*="display: flex"] button {
+    flex: 1 !important;
+  }
+
+  /* Icon only buttons */
+  button svg {
+    width: 18px !important;
+    height: 18px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  button {
+    padding: 9px 10px !important;
+    font-size: 12px !important;
+    min-height: 40px !important;
+  }
+}

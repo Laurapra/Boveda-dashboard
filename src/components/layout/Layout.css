@@ -375,27 +375,27 @@
 
 @media (max-width: 768px) {
   .app-container {
-    flex-direction: column;
+    flex-direction: row;
   }
 
   .sidebar {
-    width: 100%;
-    height: auto;
+    width: 280px;
+    height: 100vh;
     position: fixed;
     top: 0;
     left: 0;
-    right: 0;
-    bottom: auto;
-    transform: translateY(-100%);
-    border-right: none;
-    border-bottom: 1px solid var(--border);
+    right: auto;
+    bottom: 0;
+    transform: translateX(-100%);
+    border-right: 1px solid var(--border);
+    border-bottom: none;
     z-index: 1000;
-    max-height: 80vh;
     overflow-y: auto;
+    transition: transform var(--transition-base) ease;
   }
 
   .sidebar.open {
-    transform: translateY(0);
+    transform: translateX(0);
   }
 
   .main-content {
@@ -512,7 +512,7 @@
   }
 
   .sidebar {
-    max-height: 70vh;
+    width: 280px;
   }
 
   .sidebar-header {
@@ -556,24 +556,20 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.3);
   z-index: 999;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-base);
 }
 
 .sidebar-overlay.visible {
-  display: block;
+  opacity: 1;
+  pointer-events: auto;
 }
 
 @media (max-width: 768px) {
   .sidebar-overlay {
     display: block;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity var(--transition-base);
-  }
-
-  .sidebar-overlay.visible {
-    opacity: 1;
-    pointer-events: auto;
   }
 }

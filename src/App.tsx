@@ -5,6 +5,7 @@ import "./styles.css";
 import "./components/layout/Layout.css";
 import "./responsive-mobile.css";
 import "./mobile-components.css";
+import "./pages-responsive.css";
 
 import { useAuthStore } from "./store/authStore";
 import { Login }    from "./pages/Login";
