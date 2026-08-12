@@ -1,0 +1,329 @@
+/* Mobile-specific component improvements */
+/* Targeting common patterns that don't respond well */
+
+/* ─────────────────────────────────────────────────────────────────── */
+/* FORMS & INPUTS - Mobile friendly                                   */
+/* ─────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  /* Input fields: full width */
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="search"],
+  textarea,
+  select {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Form groups: stack vertically */
+  div[style*="display: \"flex\""][style*="gap:"] label + input,
+  div[style*="display: flex"][style*="gap:"] label + input {
+    margin-top: 4px !important;
+  }
+
+  /* Label + input pairs: stack */
+  label {
+    display: block !important;
+    margin-bottom: 6px !important;
+  }
+
+  /* Buttons in forms: full width on small screens */
+  button[type="submit"],
+  button[type="button"] {
+    width: auto !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────── */
+/* TABLES - Make horizontal scroll less needed                         */
+/* ─────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  /* Table: make it fit */
+  table {
+    width: 100% !important;
+    font-size: 12px !important;
+    border-collapse: collapse !important;
+  }
+
+  table th {
+    padding: 8px 6px !important;
+    font-size: 11px !important;
+  }
+
+  table td {
+    padding: 8px 6px !important;
+    word-break: break-word !important;
+  }
+
+  /* Hide columns that take too much space in mobile */
+  table th:nth-child(n+5),
+  table td:nth-child(n+5) {
+    display: none !important;
+  }
+
+  /* Alternating row colors for better readability */
+  table tbody tr:nth-child(even) {
+    background: var(--elevated) !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────── */
+/* CARDS/PANELS - Better mobile display                                */
+/* ─────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  /* Card padding: reduce */
+  div[style*="border: \"1px solid var(--border)\""],
+  div[style*="border: 1px solid var(--border)"],
+  div[style*="background: \"var(--surface)\""][style*="border"],
+  div[style*="background: var(--surface)"][style*="border"] {
+    padding: 14px !important;
+  }
+
+  /* Card gaps: reduce */
+  div[style*="gap: \"14px\""][style*="border: \"1px solid"],
+  div[style*="gap: 14px"][style*="border: 1px solid"] {
+    gap: 10px !important;
+  }
+
+  /* Nested cards: ensure they stack */
+  div[style*="background: \"var(--elevated)\""],
+  div[style*="background: var(--elevated)"] {
+    margin-bottom: 8px !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────── */
+/* BUTTONS - Mobile touch friendly                                    */
+/* ─────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  /* Minimum touch target: 44x44px (accessibility) */
+  button {
+    min-height: 44px !important;
+    min-width: 44px !important;
+  }
+
+  /* Button groups: stack in mobile */
+  div[style*="display: \"flex\""][style*="gap: \"8px\""] button,
+  div[style*="display: flex"][style*="gap: 8px"] button {
+    flex: 1 !important;
+  }
+
+  /* Button padding */
+  button[style*="padding: \"9px\""],
+  button[style*="padding: 9px"] {
+    padding: 10px 12px !important;
+  }
+
+  /* Icon buttons: maintain size */
+  button svg {
+    width: 18px !important;
+    height: 18px !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────── */
+/* LISTS & ITEMS - Better mobile layout                                */
+/* ─────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  /* List items: full width */
+  li {
+    display: list-item !important;
+    width: 100% !important;
+  }
+
+  /* Items with icons: ensure icon doesn't squeeze text */
+  div[style*="gap: \"10px\""],
+  div[style*="gap: 10px"] {
+    align-items: flex-start !important;
+  }
+
+  /* Icon containers: fixed width */
+  div[style*="width: \"36px\""],
+  div[style*="width: 36px"] {
+    flex-shrink: 0 !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────── */
+/* MODALS & DRAWERS - Full width in mobile                             */
+/* ─────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  /* Modal backgrounds */
+  div[style*="position: \"fixed\""][style*="background"],
+  div[style*="position: fixed"][style*="background"] {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Modal content: full width with padding */
+  div[style*="maxWidth:"] {
+    max-width: 100% !important;
+    width: calc(100% - 32px) !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────── */
+/* HORIZONTAL SCROLLING - Prevent where possible                       */
+/* ─────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  /* Ensure canvas doesn't scroll horizontally */
+  .canvas {
+    overflow-x: hidden !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* All major containers */
+  div[style*="display: \"grid\""],
+  div[style*="display: grid"],
+  div[style*="display: \"flex\""],
+  div[style*="display: flex"] {
+    max-width: 100vw !important;
+    overflow-x: hidden !important;
+  }
+
+  /* Prevent text from extending */
+  p, span, div {
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+  }
+
+  /* Long numbers: compress slightly */
+  span[style*="fontVariantNumeric: \"tabular-nums\""],
+  span[style*="fontVariantNumeric: tabular-nums"] {
+    font-size: 0.9em !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────── */
+/* TYPOGRAPHY - Better readability in mobile                           */
+/* ─────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  /* Headings: adjust sizing */
+  h1, h2, h3, h4, h5, h6 {
+    word-break: break-word !important;
+    hyphens: auto !important;
+  }
+
+  /* Long text: better line height */
+  p {
+    line-height: 1.6 !important;
+  }
+
+  /* Reduce font sizes for small screens */
+  div[style*="fontSize: \"14px\""],
+  div[style*="fontSize: 14px"] {
+    font-size: 13px !important;
+  }
+
+  /* Labels stay readable */
+  label {
+    font-size: 13px !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────── */
+/* SMALL SCREENS - Extra mobile optimizations (< 480px)                */
+/* ─────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 480px) {
+  /* Aggressive padding reduction */
+  div[style*="padding: \"12px\""],
+  div[style*="padding: 12px"] {
+    padding: 8px !important;
+  }
+
+  /* Aggressive gap reduction */
+  div[style*="gap: \"8px\""],
+  div[style*="gap: 8px"] {
+    gap: 6px !important;
+  }
+
+  /* Table: even smaller font */
+  table {
+    font-size: 11px !important;
+  }
+
+  table th,
+  table td {
+    padding: 6px 4px !important;
+  }
+
+  /* Hide even more columns on very small screens */
+  table th:nth-child(n+4),
+  table td:nth-child(n+4) {
+    display: none !important;
+  }
+
+  /* Button: smaller on tiny screens */
+  button {
+    min-height: 40px !important;
+    font-size: 12px !important;
+  }
+
+  /* SVG: very small on tiny screens */
+  svg {
+    max-width: 100% !important;
+  }
+
+  svg[width="140"],
+  svg[height="140"] {
+    width: 80px !important;
+    height: 80px !important;
+  }
+
+  /* Text overflow handling */
+  span[style*="fontSize: \"10px\""],
+  span[style*="fontSize: 10px"] {
+    font-size: 9px !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────── */
+/* UTILITY CLASSES - Additional safety                                */
+/* ─────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  /* Ensure nothing escapes the viewport */
+  * {
+    box-sizing: border-box !important;
+  }
+
+  /* Prevent horizontal scroll on body */
+  html,
+  body {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+  }
+
+  /* Main content area */
+  main {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+  }
+
+  /* Images: responsive */
+  img {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  /* Prevent zoom on double tap for buttons */
+  button,
+  a,
+  input {
+    touch-action: manipulation !important;
+  }
+}

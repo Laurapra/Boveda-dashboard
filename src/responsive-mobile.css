@@ -1,0 +1,421 @@
+/* Responsive Mobile Improvements - No logic changes, CSS only */
+/* Media queries optimizadas para tablet y móvil */
+
+/* ─────────────────────────────────────────────────────────────────── */
+/* TABLET (768px - 1024px)                                             */
+/* ─────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 1024px) {
+  /* Reducir padding en canvas para tablets */
+  .canvas {
+    padding: 16px 18px !important;
+  }
+
+  /* Grids de 3 o 4 columnas → 2 columnas */
+  div[style*="gridTemplateColumns: repeat(4,1fr)"],
+  div[style*="gridTemplateColumns: \"repeat(4,1fr)\""] {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* Grids de 3 columnas → 2 columnas */
+  div[style*="gridTemplateColumns: \"1fr 1fr 1fr\""],
+  div[style*="gridTemplateColumns: '1fr 1fr 1fr'"] {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  /* Contenedores flex con gap grande → menos ancho */
+  div[style*="gap: \"14px\""],
+  div[style*="gap: 14px"],
+  div[style*="gap: \"16px\""],
+  div[style*="gap: 16px"] {
+    gap: 12px !important;
+  }
+
+  /* Padding en cards reducido */
+  div[style*="padding: \"32px\""],
+  div[style*="padding: 32px"] {
+    padding: 20px !important;
+  }
+
+  /* Márgenes reducidos */
+  div[style*="marginBottom: \"20px\""] {
+    margin-bottom: 14px !important;
+  }
+
+  div[style*="marginBottom: \"16px\""] {
+    margin-bottom: 12px !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────── */
+/* MOBILE (< 768px)                                                    */
+/* ─────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  /* Canvas: padding reducido */
+  .canvas {
+    padding: 12px 10px !important;
+    overflow-y: auto;
+  }
+
+  /* ── GRIDS: Convertir a columna única ── */
+
+  /* Grid 2 columnas → 1 columna */
+  div[style*="gridTemplateColumns: \"260px 1fr\""],
+  div[style*="gridTemplateColumns: '260px 1fr'"],
+  div[style*="gridTemplateColumns: \"1fr 1fr\""],
+  div[style*="gridTemplateColumns: '1fr 1fr'"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Grid 3 columnas → 1 columna */
+  div[style*="gridTemplateColumns: \"1fr 1fr 1fr\""],
+  div[style*="gridTemplateColumns: '1fr 1fr 1fr'"],
+  div[style*="gridTemplateColumns: \"1fr 1fr 1fr 1fr\""],
+  div[style*="gridTemplateColumns: '1fr 1fr 1fr 1fr'"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Grid 4 columnas → 1 columna */
+  div[style*="gridTemplateColumns: repeat(4,1fr)"],
+  div[style*="gridTemplateColumns: \"repeat(4,1fr)\""],
+  div[style*="gridTemplateColumns: repeat(3,1fr)"],
+  div[style*="gridTemplateColumns: \"repeat(3,1fr)\""],
+  div[style*="gridTemplateColumns: repeat(2,1fr)"],
+  div[style*="gridTemplateColumns: \"repeat(2,1fr)\""] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Remover borderRight de columnas grid */
+  div[style*="borderRight: \"1px solid var(--border)\""],
+  div[style*="borderRight: 1px solid"] {
+    border-right: none !important;
+    border-bottom: 1px solid var(--border) !important;
+    padding-bottom: 12px !important;
+    margin-bottom: 12px !important;
+  }
+
+  /* ── FLEX LAYOUTS ── */
+
+  /* Flex row → column cuando el contenedor tiene gap grande */
+  div[style*="flexDirection: \"row\""][style*="gap:"],
+  div[style*="display: \"flex\""][style*="gap: \"14px\""],
+  div[style*="display: flex"][style*="gap: 14px"] {
+    flex-direction: column !important;
+  }
+
+  /* Flex con alignItems center → flex-start en móvil para items grandes */
+  div[style*="display: \"flex\""][style*="alignItems: \"center\""][style*="gap: \"20px\""],
+  div[style*="display: flex"][style*="align-items: center"][style*="gap: 20px"] {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+  }
+
+  /* ── SPACING ── */
+
+  /* Padding agresivo: 32px → 16px */
+  div[style*="padding: \"32px 36px\""],
+  div[style*="padding: 32px"],
+  div[style*="padding: \"32px"] {
+    padding: 16px !important;
+  }
+
+  /* Padding 24px → 14px */
+  div[style*="padding: \"24px\""],
+  div[style*="padding: 24px"] {
+    padding: 14px !important;
+  }
+
+  /* Gaps: reducir tamaños grandes */
+  div[style*="gap: \"20px\""],
+  div[style*="gap: 20px"] {
+    gap: 12px !important;
+  }
+
+  div[style*="gap: \"18px\""],
+  div[style*="gap: 18px"] {
+    gap: 10px !important;
+  }
+
+  div[style*="gap: \"16px\""],
+  div[style*="gap: 16px"] {
+    gap: 10px !important;
+  }
+
+  div[style*="gap: \"14px\""],
+  div[style*="gap: 14px"] {
+    gap: 8px !important;
+  }
+
+  /* Márgenes */
+  div[style*="marginBottom: \"32px\""] {
+    margin-bottom: 16px !important;
+  }
+
+  div[style*="marginBottom: \"20px\""] {
+    margin-bottom: 12px !important;
+  }
+
+  div[style*="marginBottom: \"16px\""] {
+    margin-bottom: 10px !important;
+  }
+
+  div[style*="marginTop: \"20px\""] {
+    margin-top: 12px !important;
+  }
+
+  div[style*="marginTop: \"16px\""] {
+    margin-top: 10px !important;
+  }
+
+  /* ── TIPOGRAFÍA ── */
+
+  /* Tamaños de fuente grandes en móvil */
+  div[style*="fontSize: \"38px\""],
+  div[style*="fontSize: 38px"] {
+    font-size: 28px !important;
+  }
+
+  div[style*="fontSize: \"32px\""],
+  div[style*="fontSize: 32px"] {
+    font-size: 24px !important;
+  }
+
+  div[style*="fontSize: \"24px\""],
+  div[style*="fontSize: 24px"] {
+    font-size: 18px !important;
+  }
+
+  div[style*="fontSize: \"22px\""],
+  div[style*="fontSize: 22px"] {
+    font-size: 16px !important;
+  }
+
+  /* Línea divisora: reducir margen */
+  div[style*="height: \"1px\""][style*="background: \"var(--border)\""],
+  div[style*="height: 1px"][style*="margin: \"20px 0\""] {
+    margin: 12px 0 !important;
+  }
+
+  /* ── ELEMENTOS ESPECÍFICOS ── */
+
+  /* SVG de gráficos: hacerlos más pequeños en móvil */
+  svg[width="200"],
+  svg[width="200"][height="200"],
+  svg[viewBox*="220"] {
+    width: 140px !important;
+    height: 140px !important;
+  }
+
+  svg[width="160"],
+  svg[height="160"] {
+    width: 120px !important;
+    height: 120px !important;
+  }
+
+  /* Tablas: hacer más responsivas */
+  table {
+    font-size: 12px !important;
+  }
+
+  th, td {
+    padding: 8px 10px !important;
+  }
+
+  /* Inputs y textareas */
+  input,
+  textarea,
+  select {
+    font-size: 16px !important; /* Evita zoom automático en iOS */
+    padding: 10px 12px !important;
+  }
+
+  /* Botones en móvil: full width cuando están en contaiener flex */
+  button[style*="padding: \"9px 14px\""],
+  button[style*="padding: 9px 14px"],
+  button[style*="padding: \"12px 16px\""],
+  button[style*="padding: 12px 16px"] {
+    padding: 10px 12px !important;
+    font-size: 13px !important;
+  }
+
+  /* ── OVERFLOW: Prevenir horizontal scroll ── */
+
+  /* Contenedores principales: asegurar que no se salgan */
+  div[style*="display: \"grid\""],
+  div[style*="display: grid"],
+  div[style*="display: \"flex\""],
+  div[style*="display: flex"] {
+    overflow-x: hidden !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Wrapper principal */
+  [style*="display: \"flex\""][style*="height: \"100vh\""],
+  [style*="display: flex"][style*="height: 100vh"] {
+    flex-wrap: wrap !important;
+  }
+
+  /* ── ESPECIALES ── */
+
+  /* Lista de elementos horizontales → vertical */
+  div[style*="display: \"flex\""][style*="flexDirection: \"row\""][style*="gap:"],
+  div[style*="display: flex"][style*="flex-direction: row"][style*="gap:"] {
+    flex-direction: column !important;
+    width: 100% !important;
+  }
+
+  /* Tarjetas pequeñas: asegurar padding mínimo */
+  div[style*="borderRadius: \"var(--radius-sm)\""],
+  div[style*="border-radius: var(--radius-sm)"] {
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+  }
+
+  /* Badge y spans pequeños */
+  span[style*="padding: \"1px 7px\""],
+  span[style*="padding: 1px 7px"] {
+    padding: 2px 6px !important;
+    font-size: 10px !important;
+  }
+
+  /* Iconos: reducir un poco en móvil */
+  svg[width="17"],
+  svg[width="15"],
+  i[class*="ti"] {
+    font-size: 14px !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────── */
+/* MOBILE PEQUEÑO (< 480px)                                            */
+/* ─────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 480px) {
+  .canvas {
+    padding: 10px 8px !important;
+  }
+
+  /* Padding más agresivo */
+  div[style*="padding: \"16px\""],
+  div[style*="padding: 16px"] {
+    padding: 12px !important;
+  }
+
+  div[style*="padding: \"20px\""],
+  div[style*="padding: 20px"] {
+    padding: 12px !important;
+  }
+
+  /* Gaps más pequeños */
+  div[style*="gap: \"12px\""],
+  div[style*="gap: 12px"] {
+    gap: 8px !important;
+  }
+
+  div[style*="gap: \"10px\""],
+  div[style*="gap: 10px"] {
+    gap: 6px !important;
+  }
+
+  /* Márgenes aún más reducidos */
+  div[style*="marginBottom: \"12px\""] {
+    margin-bottom: 8px !important;
+  }
+
+  div[style*="marginTop: \"12px\""] {
+    margin-top: 8px !important;
+  }
+
+  /* Tipografía más compacta */
+  div[style*="fontSize: \"28px\""],
+  div[style*="fontSize: 28px"] {
+    font-size: 22px !important;
+  }
+
+  div[style*="fontSize: \"24px\""],
+  div[style*="fontSize: 24px"] {
+    font-size: 18px !important;
+  }
+
+  div[style*="fontSize: \"20px\""],
+  div[style*="fontSize: 20px"] {
+    font-size: 16px !important;
+  }
+
+  div[style*="fontSize: \"18px\""],
+  div[style*="fontSize: 18px"] {
+    font-size: 15px !important;
+  }
+
+  div[style*="fontSize: \"16px\""],
+  div[style*="fontSize: 16px"] {
+    font-size: 14px !important;
+  }
+
+  /* SVG más pequeños */
+  svg[width="140"],
+  svg[height="140"] {
+    width: 100px !important;
+    height: 100px !important;
+  }
+
+  svg[width="200"],
+  svg[width="200"][height="200"] {
+    width: 100px !important;
+    height: 100px !important;
+  }
+
+  /* Divider: aún más compacto */
+  div[style*="height: \"1px\""][style*="margin: \"12px 0\""] {
+    margin: 8px 0 !important;
+  }
+
+  /* Full width para flex containers */
+  div[style*="display: \"flex\""] {
+    width: 100% !important;
+  }
+
+  /* Reducir bordes y radios en elementos pequeños */
+  div[style*="borderRadius: \"9px\""],
+  div[style*="border-radius: 9px"] {
+    border-radius: 6px !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────── */
+/* UTILITY: Asegurar que nada se sale horizontalmente                  */
+/* ─────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  /* Prevenir overflow horizontal en cualquier viewport */
+  body {
+    overflow-x: hidden !important;
+  }
+
+  .canvas {
+    overflow-x: hidden !important;
+    width: 100vw !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .canvas > * {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    overflow-x: hidden !important;
+  }
+
+  /* Asegurar que divs grandes no se salgan */
+  div[style*="display: \"grid\""],
+  div[style*="display: grid"],
+  div[style*="background: \"var(--surface)\""],
+  div[style*="background: var(--surface)"],
+  div[style*="border: \"1px solid"],
+  div[style*="border: 1px solid"] {
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+  }
+}
