@@ -140,6 +140,20 @@ table tbody tr:nth-child(even) {
   .table-scroll-content {
     min-width: 100%;
   }
+
+  /* Auto-fix existing table containers */
+  div[style*="overflowX: \"auto\""],
+  div[style*="overflowX: auto"] {
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+  }
+
+  /* Ensure tables with inline styles stay responsive */
+  div[style*="overflowX: \"auto\""] table,
+  div[style*="overflowX: auto"] table {
+    min-width: 600px !important;
+    width: auto !important;
+  }
 }
 
 @media (max-width: 480px) {
