@@ -1,0 +1,332 @@
+/* Tables Responsive - Horizontal scroll with synchronized scrollbar */
+
+/* ─────────────────────────────────────────────────────────────────── */
+/* TABLE WRAPPER - Main container                                      */
+/* ─────────────────────────────────────────────────────────────────── */
+
+.table-wrapper {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  width: 100%;
+}
+
+.table-scroll-top {
+  width: 100%;
+  height: 8px;
+  background: var(--elevated);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  overflow-y: hidden;
+  display: none;
+}
+
+.table-scroll-top::-webkit-scrollbar {
+  height: 8px;
+}
+
+.table-scroll-top::-webkit-scrollbar-track {
+  background: var(--elevated);
+}
+
+.table-scroll-top::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 4px;
+}
+
+.table-scroll-top::-webkit-scrollbar-thumb:hover {
+  background: var(--border);
+}
+
+.table-scroll-content {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+  flex: 1;
+}
+
+.table-scroll-content::-webkit-scrollbar {
+  height: 8px;
+}
+
+.table-scroll-content::-webkit-scrollbar-track {
+  background: var(--elevated);
+}
+
+.table-scroll-content::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 4px;
+}
+
+.table-scroll-content::-webkit-scrollbar-thumb:hover {
+  background: var(--border);
+}
+
+/* ─────────────────────────────────────────────────────────────────── */
+/* TABLES - Responsive styling                                         */
+/* ─────────────────────────────────────────────────────────────────── */
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+
+table thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+table th {
+  background: var(--elevated);
+  border: 1px solid var(--border);
+  padding: 12px 14px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--t1);
+  white-space: nowrap;
+  min-width: 100px;
+}
+
+table td {
+  border: 1px solid var(--border);
+  padding: 10px 14px;
+  color: var(--t2);
+  word-break: break-word;
+}
+
+table tbody tr:hover {
+  background: var(--elevated);
+}
+
+table tbody tr:nth-child(even) {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+/* ─────────────────────────────────────────────────────────────────── */
+/* MOBILE RESPONSIVE - Tables                                          */
+/* ─────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .table-wrapper {
+    border-radius: var(--radius-sm);
+  }
+
+  .table-scroll-top {
+    display: block;
+  }
+
+  table {
+    font-size: 12px;
+    min-width: 600px;
+  }
+
+  table th {
+    padding: 10px 12px;
+    min-width: 90px;
+    font-size: 11px;
+  }
+
+  table td {
+    padding: 9px 12px;
+    font-size: 12px;
+  }
+
+  /* Ensure table doesn't compress */
+  .table-scroll-content {
+    min-width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  table {
+    font-size: 11px;
+    min-width: 500px;
+  }
+
+  table th {
+    padding: 8px 10px;
+    min-width: 80px;
+    font-size: 10px;
+  }
+
+  table td {
+    padding: 7px 10px;
+    font-size: 11px;
+  }
+
+  /* Smaller text for numbers */
+  table td[align="right"],
+  table th[align="right"] {
+    min-width: 80px;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────── */
+/* SPECIFIC TABLE COLUMNS - Min widths                                 */
+/* ─────────────────────────────────────────────────────────────────── */
+
+/* De/Para - Names */
+td:nth-child(1),
+th:nth-child(1),
+td:nth-child(2),
+th:nth-child(2) {
+  min-width: 120px;
+}
+
+/* Banco/Bank - Short info */
+td:nth-child(3),
+th:nth-child(3) {
+  min-width: 100px;
+}
+
+/* Monto/Amount - Numbers */
+td:nth-child(4),
+th:nth-child(4),
+td:nth-child(5),
+th:nth-child(5) {
+  min-width: 110px;
+  text-align: right;
+  padding-right: 14px;
+}
+
+/* Estado/Status - Badge */
+td:nth-child(6),
+th:nth-child(6) {
+  min-width: 100px;
+}
+
+/* Fecha/Date - Timestamp */
+td:nth-child(7),
+th:nth-child(7) {
+  min-width: 130px;
+  white-space: nowrap;
+}
+
+/* Referencia/Reference - Code */
+td:nth-child(8),
+th:nth-child(8),
+td:nth-child(9),
+th:nth-child(9) {
+  min-width: 110px;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+/* Actions - Buttons */
+td:nth-child(10),
+th:nth-child(10) {
+  min-width: 100px;
+  text-align: center;
+}
+
+/* ─────────────────────────────────────────────────────────────────── */
+/* TABLE VARIATIONS - Different types                                  */
+/* ─────────────────────────────────────────────────────────────────── */
+
+/* Transacciones/Transactions table */
+.table-transacciones th:nth-child(1) { min-width: 130px; }
+.table-transacciones th:nth-child(2) { min-width: 130px; }
+.table-transacciones th:nth-child(3) { min-width: 110px; }
+.table-transacciones th:nth-child(4) { min-width: 110px; }
+.table-transacciones th:nth-child(5) { min-width: 100px; }
+.table-transacciones th:nth-child(6) { min-width: 120px; }
+
+/* Usuarios/Users table */
+.table-usuarios th:nth-child(1) { min-width: 120px; }
+.table-usuarios th:nth-child(2) { min-width: 140px; }
+.table-usuarios th:nth-child(3) { min-width: 100px; }
+.table-usuarios th:nth-child(4) { min-width: 100px; }
+
+/* Tarifas/Rates table */
+.table-tarifas th:nth-child(1) { min-width: 120px; }
+.table-tarifas th:nth-child(2) { min-width: 100px; }
+.table-tarifas th:nth-child(3) { min-width: 110px; }
+.table-tarifas th:nth-child(4) { min-width: 110px; }
+
+/* ─────────────────────────────────────────────────────────────────── */
+/* STATUS BADGES - Align in tables                                     */
+/* ─────────────────────────────────────────────────────────────────── */
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.status-badge.success {
+  background: var(--success-dim);
+  color: var(--success);
+}
+
+.status-badge.error {
+  background: var(--error-dim);
+  color: var(--error);
+}
+
+.status-badge.warning {
+  background: var(--warning-dim);
+  color: var(--warning);
+}
+
+.status-badge.info {
+  background: var(--info-dim);
+  color: var(--info);
+}
+
+/* ─────────────────────────────────────────────────────────────────── */
+/* TABLE ACTIONS - Buttons in cells                                    */
+/* ─────────────────────────────────────────────────────────────────── */
+
+.table-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--elevated);
+  border: 1px solid var(--border);
+  color: var(--accent);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.table-action-btn:hover {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+}
+
+@media (max-width: 768px) {
+  .table-action-btn {
+    padding: 5px 8px;
+    font-size: 11px;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────── */
+/* UTILITY - Ensure tables never overflow                              */
+/* ─────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  /* Prevent double scroll bars */
+  div[style*="overflowX: \"auto\""],
+  div[style*="overflowX: auto"] {
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+  }
+
+  /* Ensure wrapper contains table properly */
+  table {
+    width: 100% !important;
+  }
+}
