@@ -1,6 +1,32 @@
 /* Pages Responsive Improvements - Specific page layouts */
 
 /* ─────────────────────────────────────────────────────────────────── */
+/* HOME PAGE - Dashboard Stats Boxes (4 columns → 2 → 1)               */
+/* ─────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 1024px) {
+  /* Tablet: 4 columns → 2 columns */
+  div[style*="gridTemplateColumns: \"repeat(4, 1fr)\""],
+  div[style*="gridTemplateColumns: 'repeat(4, 1fr)'"],
+  div[style*="grid-template-columns: repeat(4, 1fr)"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+@media (max-width: 768px) {
+  /* Mobile: 4 columns → 1 column */
+  div[style*="gridTemplateColumns: \"repeat(4, 1fr)\""],
+  div[style*="gridTemplateColumns: 'repeat(4, 1fr)'"],
+  div[style*="grid-template-columns: repeat(4, 1fr)"],
+  div[style*="gridTemplateColumns: \"repeat(2, 1fr)\""],
+  div[style*="gridTemplateColumns: 'repeat(2, 1fr)'"],
+  div[style*="grid-template-columns: repeat(2, 1fr)"] {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────── */
 /* HOME PAGE - Two column → One column in mobile                       */
 /* ─────────────────────────────────────────────────────────────────── */
 

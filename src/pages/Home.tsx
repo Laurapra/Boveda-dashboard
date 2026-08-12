@@ -212,6 +212,158 @@ export const HomeView: React.FC<Props> = ({ fmt, onToast }) => {
   return (
     <div style={{ animation: "fadeUp .3s ease" }}>
 
+      {/* ── Dashboard Stats Boxes ── */}
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(4, 1fr)",
+        gap: "12px",
+        marginBottom: "20px",
+      }}>
+        {/* Flujo del mes */}
+        <div style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius)",
+          padding: "16px",
+          display: "flex",
+          flexDirection: "column",
+        }}>
+          <div style={{
+            fontSize: "11px",
+            fontWeight: 600,
+            color: "var(--t3)",
+            textTransform: "uppercase",
+            letterSpacing: ".06em",
+            marginBottom: "10px",
+          }}>
+            Flujo del mes
+          </div>
+          <div style={{
+            fontSize: "22px",
+            fontWeight: 700,
+            color: "var(--t1)",
+            fontVariantNumeric: "tabular-nums",
+          }}>
+            {loading ? "—" : fmt(metrics.recibido + metrics.dispersado)}
+          </div>
+          <div style={{
+            fontSize: "11px",
+            color: "var(--t3)",
+            marginTop: "6px",
+          }}>
+            Recibido + Dispersado
+          </div>
+        </div>
+
+        {/* Saldo real */}
+        <div style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius)",
+          padding: "16px",
+          display: "flex",
+          flexDirection: "column",
+        }}>
+          <div style={{
+            fontSize: "11px",
+            fontWeight: 600,
+            color: "var(--t3)",
+            textTransform: "uppercase",
+            letterSpacing: ".06em",
+            marginBottom: "10px",
+          }}>
+            {isAdmin ? "Saldo Real" : "Saldo Disponible"}
+          </div>
+          <div style={{
+            fontSize: "22px",
+            fontWeight: 700,
+            color: "var(--t1)",
+            fontVariantNumeric: "tabular-nums",
+          }}>
+            {loading ? "—" : fmt(saldoAnim)}
+          </div>
+          <div style={{
+            fontSize: "11px",
+            color: "var(--t3)",
+            marginTop: "6px",
+          }}>
+            {isAdmin ? "Bepay" : "COP disponible"}
+          </div>
+        </div>
+
+        {/* Recibido este mes */}
+        <div style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius)",
+          padding: "16px",
+          display: "flex",
+          flexDirection: "column",
+        }}>
+          <div style={{
+            fontSize: "11px",
+            fontWeight: 600,
+            color: "var(--t3)",
+            textTransform: "uppercase",
+            letterSpacing: ".06em",
+            marginBottom: "10px",
+          }}>
+            Recibido
+          </div>
+          <div style={{
+            fontSize: "22px",
+            fontWeight: 700,
+            color: "var(--success)",
+            fontVariantNumeric: "tabular-nums",
+          }}>
+            {loading ? "—" : fmt(recAnim)}
+          </div>
+          <div style={{
+            fontSize: "11px",
+            color: "var(--t3)",
+            marginTop: "6px",
+          }}>
+            <b style={{ fontWeight: 600, color: "var(--t2)" }}>{metrics.recCount}</b> transacciones
+          </div>
+        </div>
+
+        {/* Dispersado este mes */}
+        <div style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius)",
+          padding: "16px",
+          display: "flex",
+          flexDirection: "column",
+        }}>
+          <div style={{
+            fontSize: "11px",
+            fontWeight: 600,
+            color: "var(--t3)",
+            textTransform: "uppercase",
+            letterSpacing: ".06em",
+            marginBottom: "10px",
+          }}>
+            Dispersado
+          </div>
+          <div style={{
+            fontSize: "22px",
+            fontWeight: 700,
+            color: "var(--error)",
+            fontVariantNumeric: "tabular-nums",
+          }}>
+            {loading ? "—" : fmt(dispAnim)}
+          </div>
+          <div style={{
+            fontSize: "11px",
+            color: "var(--t3)",
+            marginTop: "6px",
+          }}>
+            <b style={{ fontWeight: 600, color: "var(--t2)" }}>{metrics.dispCount}</b> dispersiones
+          </div>
+        </div>
+      </div>
+
       {/* ── Panel principal: Donut + KPIs ── */}
       <div style={{
         display: "grid", gridTemplateColumns: "260px 1fr",
