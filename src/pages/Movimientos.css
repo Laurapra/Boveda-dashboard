@@ -1,0 +1,123 @@
+/* src/pages/Movimientos.css */
+
+.mov-filters {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: var(--shadow);
+}
+
+.mov-filters__row {
+  display: grid;
+  gap: 12px;
+}
+
+.mov-filters__row--top {
+  grid-template-columns: 1fr;
+}
+
+.mov-filters__row--dates {
+  grid-template-columns: 1fr;
+  align-items: end;
+}
+
+.mov-filters__search {
+  position: relative;
+  min-width: 0;
+}
+
+.mov-filters__searchIcon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--t3);
+  font-size: 14px;
+  pointer-events: none;
+}
+
+.mov-filters__search input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px 10px 34px !important;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--bg);
+  color: var(--t1);
+  font-size: 14px;
+  outline: none;
+}
+
+.mov-filters__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mov-filters__field label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--t3);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.mov-filters__field select,
+.mov-filters__field input[type="date"] {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--bg);
+  color: var(--t1);
+  font-size: 14px;
+  outline: none;
+}
+
+.mov-filters__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.mov-filters__actions button {
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--elevated);
+  color: var(--t2);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+@media (min-width: 640px) {
+  .mov-filters__row--top {
+    grid-template-columns: minmax(0, 2fr) minmax(160px, 1fr) minmax(150px, 1fr);
+  }
+
+  .mov-filters__row--dates {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    gap: 16px;
+  }
+}
+
+@media (min-width: 900px) {
+  .mov-filters {
+    padding: 18px 20px;
+    gap: 18px;
+  }
+
+  .mov-filters__row--dates {
+    grid-template-columns: minmax(180px, 240px) minmax(180px, 240px) auto;
+    gap: 20px;
+  }
+}
