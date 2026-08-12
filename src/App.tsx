@@ -50,12 +50,17 @@ export default function App() {
   const [theme, setTheme]           = useState<"dark" | "light">("dark");
   const { toasts, addToast, removeToast } = useToast();
   const [createLinkOpen, setCreateLinkOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => { loadSession(); }, []);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [view]);
 
   const toggleTheme = () => setTheme((t) => t === "dark" ? "light" : "dark");
   const fmt = COP.format.bind(COP);
@@ -101,79 +106,67 @@ export default function App() {
 
   // ── Dashboard ──
   return (
-    <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
+    <div className="app-shell">
       <Sidebar
         active={view}
         onNav={setView}
         theme={theme}
         onToggleTheme={toggleTheme}
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
       />
 
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
-
-        {/* Topbar */}
-        <header style={{
-          position: "sticky", top: 0, zIndex: 30,
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "13px 26px",
-          background: "color-mix(in srgb, var(--bg) 86%, transparent)",
-          backdropFilter: "blur(12px)",
-          borderBottom: "1px solid var(--border)",
-          flexShrink: 0,
-        }}>
-          <div>
-            <div style={{ fontSize: "15px", fontWeight: 600, letterSpacing: "-.2px" }}>
-              {PAGE_INFO[view].title}
-            </div>
-            <div style={{ fontSize: "12px", color: "var(--t3)", marginTop: "1px" }}>
-              {PAGE_INFO[view].sub}
+      <div className="app-shell__main">
+        <header className="app-topbar">
+          <div className="app-topbar__left">
+            <button
+              type="button"
+              className="app-topbar__menuBtn"
+              onClick={() => setMenuOpen(true)}
+              aria-label="Abrir menú"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
+                <path d="M4 7h16M4 12h16M4 17h16" strokeLinecap="round" />
+              </svg>
+            </button>
+            <div className="app-topbar__titles">
+              <div className="app-topbar__title">{PAGE_INFO[view].title}</div>
+              <div className="app-topbar__sub">{PAGE_INFO[view].sub}</div>
             </div>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--surface)", fontSize: "13px", fontWeight: 500, color: "var(--t2)" }}>
-              <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "var(--success)", boxShadow: "0 0 0 3px var(--success-dim)" }} />
+          <div className="app-topbar__actions">
+            <div className="app-topbar__mesa">
+              <span className="app-topbar__mesaDot" />
               Mesa P2P · Principal
             </div>
             <button
+              type="button"
+              className="app-topbar__cta"
               onClick={() => setCreateLinkOpen(true)}
-              style={{
-                display: "inline-flex", alignItems: "center", gap: "7px",
-                padding: "9px 14px", borderRadius: "var(--radius-sm)",
-                fontWeight: 600, fontSize: "13px",
-                background: "var(--accent)", color: "#fff",
-                border: "none", cursor: "pointer",
-                boxShadow: "0 6px 16px -8px var(--accent-ring)",
-              }}
+              aria-label="Crear link"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="15" height="15">
                 <path d="M12 5v14M5 12h14" strokeLinecap="round" />
               </svg>
-              Crear Link
+              <span>Crear Link</span>
             </button>
           </div>
         </header>
 
-        {/* Canvas */}
-        <main style={{ flex: 1, overflowY: "auto", padding: "22px 26px" }}>
-
-          {/* Páginas existentes */}
+        <main className="app-canvas">
           {view === "home"       && <HomeView         fmt={fmt} onToast={addToast} />}
           {view === "cuenta"     && <EstadoCuentaView fmt={fmt} onToast={addToast} />}
           {view === "onboarding" && <OnboardingView   onToast={addToast} />}
           {view === "admin"      && <AdminView        onToast={addToast} />}
-
-          {/* Páginas nuevas */}
           {view === "billeteras"  && <BilleterasView  fmt={fmt} onToast={addToast} />}
           {view === "movimientos" && <MovimientosView fmt={fmt} onToast={addToast} />}
           {view === "cuentas"     && <CuentasView     onToast={addToast} />}
           {view === "tarifas"     && <TarifasView />}
           {view === "reportes"    && <ReportesView    fmt={fmt} />}
-
         </main>
       </div>
 
-      {/* Modal de creación de link/QR de pago */}
       <CreateLinkModal
         isOpen={createLinkOpen}
         onClose={() => setCreateLinkOpen(false)}

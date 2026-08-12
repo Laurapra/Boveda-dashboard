@@ -5,6 +5,7 @@ import { useAuthStore } from "../store/authStore";
 import { useBeneficiaries, type Beneficiary, type BenAccount } from "../hooks/useBeneficiaries";
 import { sendPayoutBreb, sendPayoutAch, getBankCodes, lookupBrebKey } from "../lib/bepayClient";
 import type { ToastType } from "../types";
+import "./Movimientos.css";
 
 interface Props {
   fmt: (n: number) => string;
@@ -935,40 +936,46 @@ export const MovimientosView: React.FC<Props> = ({ fmt, onToast }) => {
         </button>
       </div>
 
-      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "14px", marginBottom: "14px" }}>
-        <div style={{ display: "flex", gap: "9px", flexWrap: "wrap", marginBottom: "10px" }}>
-          <div style={{ position: "relative", flex: "2 1 220px" }}>
-            <i className="ti ti-search" style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "var(--t3)", fontSize: "14px" }} />
+      <div className="mov-filters">
+        <div className="mov-filters__row mov-filters__row--top">
+          <div className="mov-filters__search">
+            <i className="ti ti-search mov-filters__searchIcon" />
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por ID, beneficiario o cuenta..." style={{ ...inputStyle, paddingLeft: "30px" }} />
           </div>
-          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} style={{ ...inputStyle, flex: "1 1 150px" }}>
-            <option value="">Todos los estados</option>
-            <option value="Completado">Completado</option>
-            <option value="Pendiente">Pendiente</option>
-            <option value="Rechazado">Rechazado</option>
-          </select>
-          <select value={filterTipo} onChange={(e) => setFilterTipo(e.target.value as TipoFiltro)} style={{ ...inputStyle, flex: "1 1 130px" }}>
-            <option value="">Todos los tipos</option>
-            <option value="breb">Bre-B</option>
-            <option value="ach">Cuenta bancaria</option>
-          </select>
+          <div className="mov-filters__field">
+            <label htmlFor="mov-filter-status">Estado</label>
+            <select id="mov-filter-status" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+              <option value="">Todos los estados</option>
+              <option value="Completado">Completado</option>
+              <option value="Pendiente">Pendiente</option>
+              <option value="Rechazado">Rechazado</option>
+            </select>
+          </div>
+          <div className="mov-filters__field">
+            <label htmlFor="mov-filter-tipo">Tipo</label>
+            <select id="mov-filter-tipo" value={filterTipo} onChange={(e) => setFilterTipo(e.target.value as TipoFiltro)}>
+              <option value="">Todos los tipos</option>
+              <option value="breb">Bre-B</option>
+              <option value="ach">Cuenta bancaria</option>
+            </select>
+          </div>
         </div>
-        <div style={{ display: "flex", gap: "9px", flexWrap: "wrap", alignItems: "center" }}>
-          <div style={{ flex: "1 1 150px" }}>
-            <label style={{ fontSize: "11px", color: "var(--t3)", display: "block", marginBottom: "4px" }}>Desde</label>
-            <input type="date" value={filterDesde} onChange={(e) => setFilterDesde(e.target.value)} style={inputStyle} />
+        <div className="mov-filters__row mov-filters__row--dates">
+          <div className="mov-filters__field">
+            <label htmlFor="mov-filter-desde">Desde</label>
+            <input id="mov-filter-desde" type="date" value={filterDesde} onChange={(e) => setFilterDesde(e.target.value)} />
           </div>
-          <div style={{ flex: "1 1 150px" }}>
-            <label style={{ fontSize: "11px", color: "var(--t3)", display: "block", marginBottom: "4px" }}>Hasta</label>
-            <input type="date" value={filterHasta} onChange={(e) => setFilterHasta(e.target.value)} style={inputStyle} />
+          <div className="mov-filters__field">
+            <label htmlFor="mov-filter-hasta">Hasta</label>
+            <input id="mov-filter-hasta" type="date" value={filterHasta} onChange={(e) => setFilterHasta(e.target.value)} />
           </div>
-          <div style={{ display: "flex", gap: "8px", marginTop: "17px" }}>
+          <div className="mov-filters__actions">
             {hasActiveFilters ? (
-              <button onClick={resetFilters} style={{ padding: "9px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--elevated)", color: "var(--t2)", cursor: "pointer", fontSize: "13px" }}>
+              <button type="button" onClick={resetFilters}>
                 Limpiar filtros
               </button>
             ) : null}
-            <button onClick={load} style={{ padding: "9px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--surface)", color: "var(--t2)", cursor: "pointer", fontSize: "13px" }}>
+            <button type="button" onClick={load} aria-label="Actualizar">
               <i className="ti ti-refresh" />
             </button>
           </div>

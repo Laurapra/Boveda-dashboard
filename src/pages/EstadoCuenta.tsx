@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabase";
 import { useAuthStore } from "../store/authStore";
 import { syncMyPayouts } from "../lib/bepayClient";
 import type { ToastType } from "../types";
+import "./EstadoCuenta.css";
 
 interface Props {
   fmt: (n: number) => string;
@@ -19,25 +20,44 @@ interface TxRow {
   status: string;
   ben_name: string | null;
   payer_name: string | null;
+  payer_document: string | null;
   bank_name: string | null;
   account_type: string | null;
+  account_key: string | null;
   payment_method: string | null;
+  ben_doc_type: string | null;
+  ben_doc_number: string | null;
+  tarifa_aplicada: string | null;
   comision_total: number | null;
   created_at: string;
 }
 
-// Exportar datos para Reportes
 export type { TxRow as EstadoTxRow };
 
-// Nombre a mostrar según el tipo de movimiento: quién te pagó (cobro) o a
-// quién le enviaste (dispersión) — mismo criterio que en Mis billeteras.
 function counterpartyName(t: TxRow): string | null {
   return t.type === "charge" ? t.payer_name : t.ben_name;
 }
 
-// Concepto automático según el producto — mismo criterio que en Mis billeteras
-// (clasificación por palabras clave sobre payment_method/concept, con
-// fallback genérico razonable para valores no reconocidos).
+function counterpartyDoc(t: TxRow): string | null {
+  if (t.type === "charge") {
+    return t.payer_document?.trim() || null;
+  }
+  const parts = [t.ben_doc_type, t.ben_doc_number].filter(Boolean);
+  return parts.length ? parts.join(" ") : null;
+}
+
+function formatLlave(t: TxRow): string {
+  const key = (t.account_key ?? "").trim();
+  if (!key) return "—";
+  return key.startsWith("@") ? key : `@${key}`;
+}
+
+function formatCuenta(t: TxRow): string {
+  if (t.account_type) return t.account_type;
+  if (t.payment_method) return t.payment_method;
+  return "—";
+}
+
 function conceptLabel(t: TxRow): string {
   if (t.type === "payout") {
     return t.account_type === "Bre-B" ? "Dispersión Bre-B" : "Dispersión ACH";
@@ -58,21 +78,31 @@ function conceptLabel(t: TxRow): string {
   return "Recaudo";
 }
 
-// Mismo agrupamiento que statusLabel() para filtrar — "completado" cubre
-// APPROVED/COMPLETED, "pendiente" cubre PENDING, todo lo demás es "rechazado".
 function statusGroup(s: string): "completed" | "pending" | "rejected" {
   if (s === "APPROVED" || s === "COMPLETED") return "completed";
   if (s === "PENDING") return "pending";
   return "rejected";
 }
 
-export const EstadoCuentaView: React.FC<Props> = ({ fmt, onToast }) => {
-  const { user }  = useAuthStore();
-  const isAdmin   = user?.role === "admin";
+function statusLabel(s: string) {
+  if (s === "APPROVED" || s === "COMPLETED") return "Completado";
+  if (s === "PENDING") return "Pendiente";
+  return "Rechazado";
+}
 
-  const [txns, setTxns]     = useState<TxRow[]>([]);
+function statusPillClass(s: string) {
+  if (s === "APPROVED" || s === "COMPLETED") return "estado-pill estado-pill--ok";
+  if (s === "PENDING") return "estado-pill estado-pill--pending";
+  return "estado-pill estado-pill--bad";
+}
+
+export const EstadoCuentaView: React.FC<Props> = ({ fmt, onToast }) => {
+  const { user } = useAuthStore();
+  const isAdmin = user?.role === "admin";
+
+  const [txns, setTxns] = useState<TxRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [mes, setMes]         = useState(() => {
+  const [mes, setMes] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   });
@@ -82,12 +112,6 @@ export const EstadoCuentaView: React.FC<Props> = ({ fmt, onToast }) => {
     if (!user) return;
     setLoading(true);
 
-    // Antes de leer, se refrescan las dispersiones propias que sigan en
-    // PENDING con el estado real de Bepay — si no, se quedaban pendientes
-    // para siempre porque solo un admin podía forzar la sincronización, y
-    // por eso nunca entraban en "Total dispersado" / "Comisiones" de abajo
-    // (esos totales solo cuentan APPROVED/COMPLETED). Es best-effort: si
-    // falla, se sigue mostrando lo que ya había en la base.
     try { await syncMyPayouts(); } catch { /* no bloquea la carga */ }
 
     const desde = `${mes}-01`;
@@ -95,7 +119,7 @@ export const EstadoCuentaView: React.FC<Props> = ({ fmt, onToast }) => {
 
     let q = supabase
       .from("bepay_transactions")
-      .select("id, bepay_ide, type, amount, concept, status, ben_name, payer_name, bank_name, account_type, payment_method, comision_total, created_at")
+      .select("id, bepay_ide, type, amount, concept, status, ben_name, payer_name, payer_document, bank_name, account_type, account_key, payment_method, ben_doc_type, ben_doc_number, tarifa_aplicada, comision_total, created_at")
       .gte("created_at", desde)
       .lt("created_at", hasta)
       .order("created_at", { ascending: false });
@@ -108,7 +132,6 @@ export const EstadoCuentaView: React.FC<Props> = ({ fmt, onToast }) => {
 
   useEffect(() => { load(); }, [load]);
 
-  // Realtime
   useEffect(() => {
     if (!user) return;
     const ch = supabase.channel("estado-rt")
@@ -121,25 +144,21 @@ export const EstadoCuentaView: React.FC<Props> = ({ fmt, onToast }) => {
     return () => { supabase.removeChannel(ch); };
   }, [user, isAdmin, load]);
 
-  // ── Métricas del mes ─────────────────────────────────────────
-  const completadas = txns.filter(t => t.status === "APPROVED" || t.status === "COMPLETED");
-  const recibido    = completadas.filter(t => t.type === "charge").reduce((s, t) => s + t.amount, 0);
-  const dispersado  = completadas.filter(t => t.type === "payout").reduce((s, t) => s + t.amount, 0);
-  const comisiones  = completadas.reduce((s, t) => s + (t.comision_total ?? 0), 0);
-  const neto        = recibido - dispersado - comisiones;
-
+  const completadas = txns.filter((t) => t.status === "APPROVED" || t.status === "COMPLETED");
+  const recibido = completadas.filter((t) => t.type === "charge").reduce((s, t) => s + t.amount, 0);
+  const dispersado = completadas.filter((t) => t.type === "payout").reduce((s, t) => s + t.amount, 0);
+  const comisiones = completadas.reduce((s, t) => s + (t.comision_total ?? 0), 0);
+  const neto = recibido - dispersado - comisiones;
   const filteredTxns = txns.filter((t) => statusFilter === "all" || statusGroup(t.status) === statusFilter);
 
-  // ── Exportar PDF ─────────────────────────────────────────────
   const handleExportPDF = async () => {
     try {
-      const { default: jsPDF }     = await import("jspdf");
+      const { default: jsPDF } = await import("jspdf");
       const { default: autoTable } = await import("jspdf-autotable");
 
-      const doc  = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+      const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
       const mesLabel = new Date(`${mes}-15`).toLocaleDateString("es-CO", { month: "long", year: "numeric" });
 
-      // ── Encabezado ──
       doc.setFillColor(26, 26, 24);
       doc.rect(0, 0, 297, 28, "F");
       doc.setTextColor(255, 255, 255);
@@ -153,17 +172,16 @@ export const EstadoCuentaView: React.FC<Props> = ({ fmt, onToast }) => {
       doc.text(`Período: ${mesLabel}`, 200, 10);
       doc.text(`Generado: ${new Date().toLocaleDateString("es-CO")}`, 200, 16);
 
-      // ── Resumen del mes ──
       doc.setTextColor(26, 26, 24);
       doc.setFontSize(9);
       doc.setFont("helvetica", "bold");
       doc.text("Resumen del período", 14, 38);
 
       const resumen = [
-        ["Total recibido",   fmt(recibido),   "Cobros completados"],
-        ["Total dispersado", fmt(dispersado),  "Dispersiones completadas"],
-        ["Comisiones",       fmt(comisiones),  "Cargos por operación"],
-        ["Movimiento neto",  fmt(neto),        "Recibido − Dispersado − Comisiones"],
+        ["Total recibido", fmt(recibido), "Cobros completados"],
+        ["Total dispersado", fmt(dispersado), "Dispersiones completadas"],
+        ["Comisiones", fmt(comisiones), "Cargos por operación"],
+        ["Movimiento neto", fmt(neto), "Recibido − Dispersado − Comisiones"],
       ];
 
       let xR = 14;
@@ -185,46 +203,42 @@ export const EstadoCuentaView: React.FC<Props> = ({ fmt, onToast }) => {
         xR += 68;
       });
 
-      // ── Tabla ──
       autoTable(doc, {
         startY: 70,
-        head: [["Fecha", "IDE", "Tipo", "Concepto", "De / Para", "Banco", "Monto", "Comisión", "Estado"]],
-        body: filteredTxns.map(t => [
-          new Date(t.created_at).toLocaleDateString("es-CO", { day:"2-digit", month:"short", year:"numeric" }),
+        head: [["Fecha", "IDE", "Tipo", "Concepto", "De / Para", "Documento", "Llave", "Cuenta", "Banco", "Monto", "Comisión", "Estado"]],
+        body: filteredTxns.map((t) => [
+          new Date(t.created_at).toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" }),
           t.bepay_ide ?? "—",
           t.type === "charge" ? "Cobro" : "Dispersión",
           conceptLabel(t),
           counterpartyName(t) ?? "—",
+          counterpartyDoc(t) ?? "—",
+          formatLlave(t),
+          formatCuenta(t),
           t.bank_name ?? "—",
           (t.type === "charge" ? "+" : "-") + fmt(t.amount),
           t.comision_total ? fmt(t.comision_total) : "—",
-          t.status === "APPROVED" || t.status === "COMPLETED" ? "Completado"
-            : t.status === "PENDING" ? "Pendiente" : "Rechazado",
+          statusLabel(t.status),
         ]),
-        styles: { fontSize: 7, cellPadding: 2.5 },
-        headStyles: { fillColor: [26, 26, 24], textColor: [255, 255, 255], fontSize: 7, fontStyle: "bold" },
+        styles: { fontSize: 6.5, cellPadding: 2 },
+        headStyles: { fillColor: [26, 26, 24], textColor: [255, 255, 255], fontSize: 6.5, fontStyle: "bold" },
         alternateRowStyles: { fillColor: [250, 249, 247] },
         columnStyles: {
-          0: { cellWidth: 22 },
-          1: { cellWidth: 22 },
-          2: { cellWidth: 20 },
-          3: { cellWidth: 42 },
-          4: { cellWidth: 40 },
-          5: { cellWidth: 28 },
-          6: { cellWidth: 26, halign: "right" },
-          7: { cellWidth: 24, halign: "right" },
+          0: { cellWidth: 20 },
+          1: { cellWidth: 18 },
+          2: { cellWidth: 18 },
+          3: { cellWidth: 32 },
+          4: { cellWidth: 28 },
+          5: { cellWidth: 22 },
+          6: { cellWidth: 28 },
+          7: { cellWidth: 18 },
           8: { cellWidth: 22 },
-        },
-        didDrawCell: (data: any) => {
-          if (data.section === "body" && data.column.index === 8) {
-            const val = String(data.cell.text[0]);
-            if (val === "Completado") doc.setTextColor(15, 110, 86);
-            else if (val === "Pendiente") doc.setTextColor(133, 79, 11);
-            else doc.setTextColor(163, 45, 45);
-          }
+          9: { cellWidth: 22, halign: "right" },
+          10: { cellWidth: 20,halign: "right" },
+          11: { cellWidth: 18 },
         },
         didParseCell: (data: any) => {
-          if (data.section === "body" && data.column.index === 6) {
+          if (data.section === "body" && data.column.index === 9) {
             const val = String(data.cell.text[0]);
             data.cell.styles.textColor = val.startsWith("+") ? [15, 110, 86] : [163, 45, 45];
             data.cell.styles.fontStyle = "bold";
@@ -232,7 +246,6 @@ export const EstadoCuentaView: React.FC<Props> = ({ fmt, onToast }) => {
         },
       });
 
-      // ── Pie ──
       const pageCount = doc.getNumberOfPages();
       for (let i = 1; i <= pageCount; i++) {
         doc.setPage(i);
@@ -249,161 +262,220 @@ export const EstadoCuentaView: React.FC<Props> = ({ fmt, onToast }) => {
     }
   };
 
-  const th: React.CSSProperties = {
-    textAlign: "left", fontSize: "11px", fontWeight: 600, textTransform: "uppercase",
-    letterSpacing: ".5px", color: "var(--t3)", padding: "11px 16px",
-    borderBottom: "1px solid var(--border)", whiteSpace: "nowrap",
-  };
-  const td: React.CSSProperties = {
-    padding: "12px 16px", borderBottom: "1px solid var(--border)", whiteSpace: "nowrap",
-  };
-
-  const statusLabel = (s: string) =>
-    s === "APPROVED" || s === "COMPLETED" ? "Completado"
-    : s === "PENDING" ? "Pendiente" : "Rechazado";
-
-  const statusColor = (s: string) =>
-    s === "APPROVED" || s === "COMPLETED" ? "var(--success)"
-    : s === "PENDING" ? "var(--warning)" : "var(--error)";
-
-  const statusBg = (s: string) =>
-    s === "APPROVED" || s === "COMPLETED" ? "var(--success-dim)"
-    : s === "PENDING" ? "var(--warning-dim)" : "var(--error-dim)";
-
   return (
-    <div style={{ animation: "fadeUp .3s ease" }}>
-
-      {/* Encabezado */}
-      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: "22px" }}>
-        <div>
-          <h1 style={{ fontSize: "23px", fontWeight: 700, letterSpacing: "-.4px", color: "var(--t1)" }}>Estado de Cuenta</h1>
-          <p style={{ color: "var(--t2)", fontSize: "13.5px", marginTop: "3px" }}>
-            Movimientos y comisiones · {isAdmin ? "todos los usuarios" : "tu cuenta"}
-          </p>
-        </div>
-        <div style={{ display: "flex", gap: "9px" }}>
+    <div className="estado">
+      <div className="estado-toolbar">
+        <div className="estado-toolbar__field">
+          <label htmlFor="estado-mes">Mes</label>
           <input
-            type="month" value={mes}
+            id="estado-mes"
+            type="month"
+            value={mes}
             onChange={(e) => setMes(e.target.value)}
-            style={{ padding: "8px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--surface)", color: "var(--t1)", fontSize: "13px", outline: "none" }}
+            aria-label="Mes"
           />
+        </div>
+        <div className="estado-toolbar__field">
+          <label htmlFor="estado-status-filter">Estado</label>
           <select
             id="estado-status-filter"
             name="estado-status-filter"
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as "all" | "completed" | "pending" | "rejected")}
-            style={{ padding: "8px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--surface)", color: "var(--t1)", fontSize: "13px", outline: "none" }}
+            onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+            aria-label="Estado"
           >
             <option value="all">Todos los estados</option>
             <option value="completed">Completado</option>
             <option value="pending">Pendiente</option>
             <option value="rejected">Rechazado</option>
           </select>
-          <button onClick={load} style={{ padding: "9px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--surface)", color: "var(--t2)", cursor: "pointer" }}>
+        </div>
+        <div className="estado-toolbar__actions">
+          <button type="button" className="estado-btn estado-btn--icon" onClick={load} aria-label="Actualizar">
             <i className="ti ti-refresh" />
           </button>
-          <button onClick={handleExportPDF} style={{ display: "flex", alignItems: "center", gap: "7px", padding: "9px 14px", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--surface)", color: "var(--t1)", fontWeight: 600, fontSize: "13px", cursor: "pointer" }}>
-            <i className="ti ti-file-download" />PDF
+          <button type="button" className="estado-btn estado-btn--primary" onClick={handleExportPDF}>
+            <i className="ti ti-file-download" />
+            <span className="hide-sm">PDF</span>
           </button>
         </div>
       </div>
 
-      {/* Resumen */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "14px", marginBottom: "18px" }}>
-        {[
-          { label: "Total recibido",   value: fmt(recibido),   color: "var(--success)" },
-          { label: "Total dispersado", value: fmt(dispersado),  color: "var(--error)" },
-          { label: "Comisiones",       value: fmt(comisiones),  color: "var(--warning)" },
-          { label: "Movimiento neto",  value: fmt(neto),        color: neto >= 0 ? "var(--success)" : "var(--error)" },
-        ].map((c) => (
-          <div key={c.label} style={{ padding: "16px 18px", borderRadius: "var(--radius)", border: "1px solid var(--border)", background: "var(--surface)", boxShadow: "var(--shadow)" }}>
-            <div style={{ fontSize: "12px", color: "var(--t2)", marginBottom: "7px" }}>{c.label}</div>
-            <div style={{ fontSize: "20px", fontWeight: 700, letterSpacing: "-.5px", color: c.color, fontVariantNumeric: "tabular-nums" }}>
-              {loading ? "—" : c.value}
-            </div>
+      <div className="estado-summary">
+        <div className="estado-metric">
+          <div className="estado-metric__label">Total recibido</div>
+          <div className="estado-metric__value estado-metric__value--in">{loading ? "—" : fmt(recibido)}</div>
+        </div>
+        <div className="estado-metric">
+          <div className="estado-metric__label">Total dispersado</div>
+          <div className="estado-metric__value estado-metric__value--out">{loading ? "—" : fmt(dispersado)}</div>
+        </div>
+        <div className="estado-metric">
+          <div className="estado-metric__label">Comisiones</div>
+          <div className="estado-metric__value estado-metric__value--fee">{loading ? "—" : fmt(comisiones)}</div>
+        </div>
+        <div className="estado-metric">
+          <div className="estado-metric__label">Movimiento neto</div>
+          <div
+            className="estado-metric__value"
+            style={{ color: neto >= 0 ? "var(--success)" : "var(--error)" }}
+          >
+            {loading ? "—" : fmt(neto)}
           </div>
-        ))}
+        </div>
       </div>
 
-      {/* Tabla */}
-      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", boxShadow: "var(--shadow)" }}>
-        <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h3 style={{ fontSize: "14.5px", fontWeight: 600, color: "var(--t1)" }}>Movimientos</h3>
-          <span style={{ fontSize: "12px", color: "var(--t3)" }}>{filteredTxns.length} registros</span>
+      <div className="estado-panel">
+        <div className="estado-panel__head">
+          <h3 className="estado-panel__title">Movimientos</h3>
+          <span className="estado-panel__count">{filteredTxns.length} registros</span>
         </div>
+
         {loading ? (
-          <div style={{ padding: "48px", textAlign: "center", color: "var(--t3)" }}>
+          <div className="estado-loading">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: "spin 1s linear infinite" }}>
               <path d="M12 2a10 10 0 0110 10" strokeLinecap="round" />
             </svg>
           </div>
         ) : filteredTxns.length === 0 ? (
-          <div style={{ padding: "48px", textAlign: "center", color: "var(--t3)" }}>Sin movimientos en este período</div>
+          <div className="estado-empty">Sin movimientos en este período</div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
-              <thead>
-                <tr>
-                  <th style={th}>Fecha</th>
-                  <th style={th}>IDE</th>
-                  <th style={th}>Tipo</th>
-                  <th style={th}>Concepto</th>
-                  <th style={th}>De / Para</th>
-                  <th style={th}>Banco</th>
-                  <th style={{ ...th, textAlign: "right" }}>Monto</th>
-                  <th style={{ ...th, textAlign: "right" }}>Comisión</th>
-                  <th style={th}>Estado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredTxns.map((row) => (
-                  <tr key={row.id}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--elevated)")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                    style={{ transition: ".1s" }}
-                  >
-                    <td style={td}>
-                      <div style={{ color: "var(--t1)" }}>
-                        {new Date(row.created_at).toLocaleDateString("es-CO", { day:"2-digit", month:"short" })}
+          <>
+            <div className="estado-cards">
+              {filteredTxns.map((row) => {
+                const isCharge = row.type === "charge";
+                const doc = counterpartyDoc(row);
+                return (
+                  <article key={row.id} className="estado-card">
+                    <div className="estado-card__top">
+                      <div>
+                        <div className="estado-card__concept">{conceptLabel(row)}</div>
+                        <div className="estado-card__party">{counterpartyName(row) ?? "—"}</div>
                       </div>
-                      <div style={{ fontSize: "10px", color: "var(--t3)" }}>
-                        {new Date(row.created_at).toLocaleTimeString("es-CO", { hour:"2-digit", minute:"2-digit" })}
+                      <div
+                        className="estado-card__amount"
+                        style={{ color: isCharge ? "var(--success)" : "var(--error)" }}
+                      >
+                        {isCharge ? "+" : "-"}{fmt(row.amount)}
                       </div>
-                    </td>
-                    <td style={{ ...td, fontSize: "12px", color: "var(--t3)", fontFamily: "var(--mono)" }}>
-                      {row.bepay_ide ?? "—"}
-                    </td>
-                    <td style={td}>
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "3px 8px", borderRadius: "7px", fontSize: "11px", fontWeight: 600, background: row.type === "charge" ? "var(--success-dim)" : "var(--error-dim)", color: row.type === "charge" ? "var(--success)" : "var(--error)" }}>
-                        <i className={`ti ${row.type === "charge" ? "ti-arrow-down-right" : "ti-arrow-up-right"}`} style={{ fontSize: "12px" }} />
-                        {row.type === "charge" ? "Cobro" : "Dispersión"}
+                    </div>
+                    <div className="estado-card__meta">
+                      <span className={isCharge ? "estado-pill estado-pill--in" : "estado-pill estado-pill--out"}>
+                        <i className={`ti ${isCharge ? "ti-arrow-down-right" : "ti-arrow-up-right"}`} />
+                        {isCharge ? "Cobro" : "Dispersión"}
                       </span>
-                    </td>
-                    <td style={{ ...td, fontWeight: 500, color: "var(--t1)" }}>
-                      {conceptLabel(row)}
-                    </td>
-                    <td style={{ ...td, color: "var(--t1)", maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {counterpartyName(row) ?? "—"}
-                    </td>
-                    <td style={{ ...td, color: "var(--t2)", fontSize: "12px" }}>
-                      {row.bank_name ?? "—"}
-                    </td>
-                    <td style={{ ...td, textAlign: "right", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: row.type === "charge" ? "var(--success)" : "var(--error)" }}>
-                      {row.type === "charge" ? "+" : "-"}{fmt(row.amount)}
-                    </td>
-                    <td style={{ ...td, textAlign: "right", color: "var(--t3)", fontSize: "12px", fontVariantNumeric: "tabular-nums" }}>
-                      {row.comision_total ? fmt(row.comision_total) : "—"}
-                    </td>
-                    <td style={td}>
-                      <span style={{ display: "inline-flex", alignItems: "center", padding: "2px 8px", borderRadius: "20px", fontSize: "11px", fontWeight: 500, color: statusColor(row.status), background: statusBg(row.status) }}>
-                        {statusLabel(row.status)}
+                      <span className={statusPillClass(row.status)}>{statusLabel(row.status)}</span>
+                      <span>
+                        {new Date(row.created_at).toLocaleDateString("es-CO", { day: "2-digit", month: "short" })}
+                        {" · "}
+                        {new Date(row.created_at).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}
                       </span>
-                    </td>
+                    </div>
+                    <dl className="estado-card__grid">
+                      <div>
+                        <dt>Llave</dt>
+                        <dd className="estado-mono">{formatLlave(row)}</dd>
+                      </div>
+                      <div>
+                        <dt>Cuenta</dt>
+                        <dd>{formatCuenta(row)}</dd>
+                      </div>
+                      <div>
+                        <dt>Documento</dt>
+                        <dd>{doc ?? "—"}</dd>
+                      </div>
+                      <div>
+                        <dt>Banco</dt>
+                        <dd>{row.bank_name ?? "—"}</dd>
+                      </div>
+                      <div>
+                        <dt>IDE</dt>
+                        <dd className="estado-mono">{row.bepay_ide ?? "—"}</dd>
+                      </div>
+                      <div>
+                        <dt>Comisión</dt>
+                        <dd>{row.comision_total ? fmt(row.comision_total) : "—"}</dd>
+                      </div>
+                      {row.tarifa_aplicada ? (
+                        <div>
+                          <dt>Tarifa</dt>
+                          <dd>{row.tarifa_aplicada}</dd>
+                        </div>
+                      ) : null}
+                      {row.payment_method ? (
+                        <div>
+                          <dt>Método</dt>
+                          <dd>{row.payment_method}</dd>
+                        </div>
+                      ) : null}
+                    </dl>
+                  </article>
+                );
+              })}
+            </div>
+
+            <div className="estado-tableWrap">
+              <table className="estado-table">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>IDE</th>
+                    <th>Tipo</th>
+                    <th>Concepto</th>
+                    <th>De / Para</th>
+                    <th>Documento</th>
+                    <th>Llave</th>
+                    <th>Cuenta</th>
+                    <th>Banco</th>
+                    <th>Método</th>
+                    <th className="num">Monto</th>
+                    <th className="num">Comisión</th>
+                    <th>Estado</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {filteredTxns.map((row) => {
+                    const isCharge = row.type === "charge";
+                    return (
+                      <tr key={row.id}>
+                        <td>
+                          <div style={{ color: "var(--t1)" }}>
+                            {new Date(row.created_at).toLocaleDateString("es-CO", { day: "2-digit", month: "short" })}
+                          </div>
+                          <div style={{ fontSize: 10, color: "var(--t3)" }}>
+                            {new Date(row.created_at).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}
+                          </div>
+                        </td>
+                        <td className="estado-mono">{row.bepay_ide ?? "—"}</td>
+                        <td>
+                          <span className={isCharge ? "estado-pill estado-pill--in" : "estado-pill estado-pill--out"}>
+                            <i className={`ti ${isCharge ? "ti-arrow-down-right" : "ti-arrow-up-right"}`} />
+                            {isCharge ? "Cobro" : "Dispersión"}
+                          </span>
+                        </td>
+                        <td style={{ fontWeight: 500, color: "var(--t1)" }}>{conceptLabel(row)}</td>
+                        <td style={{ color: "var(--t1)" }}>{counterpartyName(row) ?? "—"}</td>
+                        <td style={{ color: "var(--t2)", fontSize: 12 }}>{counterpartyDoc(row) ?? "—"}</td>
+                        <td className="estado-mono">{formatLlave(row)}</td>
+                        <td style={{ color: "var(--t2)", fontSize: 12 }}>{formatCuenta(row)}</td>
+                        <td style={{ color: "var(--t2)", fontSize: 12 }}>{row.bank_name ?? "—"}</td>
+                        <td style={{ color: "var(--t2)", fontSize: 12 }}>{row.payment_method ?? "—"}</td>
+                        <td className="num" style={{ fontWeight: 700, color: isCharge ? "var(--success)" : "var(--error)" }}>
+                          {isCharge ? "+" : "-"}{fmt(row.amount)}
+                        </td>
+                        <td className="num" style={{ color: "var(--t3)", fontSize: 12 }}>
+                          {row.comision_total ? fmt(row.comision_total) : "—"}
+                        </td>
+                        <td>
+                          <span className={statusPillClass(row.status)}>{statusLabel(row.status)}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
     </div>
