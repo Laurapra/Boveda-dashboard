@@ -71,6 +71,30 @@ function extractPayoutItemStatus(data: Record<string, unknown> | null | undefine
   return typeof data.status === "string" ? data.status : undefined;
 }
 
+// Lee el claim "aal" (Authenticator Assurance Level) directo del JWT de
+// sesión, sin depender de userClient.auth.mfa.getAuthenticatorAssuranceLevel()
+// — ese cliente efímero se arma solo con el header Authorization (nunca con
+// setSession()), así que su detección de AAL basada en sesión no es
+// confiable en este contexto de Edge Function. "aal2" solo aparece en el JWT
+// después de pasar por supabase.auth.mfa.challengeAndVerify() con un factor
+// TOTP ya verificado — es la única forma real de confirmar el 2FA acá,
+// porque el front nunca podría fabricar ese claim por su cuenta.
+function getAal(authHeader: string | null): string | null {
+  if (!authHeader) return null;
+  const token = authHeader.replace(/^Bearer\s+/i, "");
+  const parts = token.split(".");
+  if (parts.length < 2) return null;
+  try {
+    const payloadB64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = payloadB64 + "=".repeat((4 - (payloadB64.length % 4)) % 4);
+    const json = atob(padded);
+    const payload = JSON.parse(json);
+    return typeof payload?.aal === "string" ? payload.aal : null;
+  } catch {
+    return null;
+  }
+}
+
 async function checkOnboardingApproved(
   adminClient: ReturnType<typeof createClient>,
   userId: string
@@ -227,6 +251,13 @@ serve(async (req) => {
 
       // ── Dispersión Bre-B ───────────────────────────────────────
       case "payout_breb": {
+        // 2FA obligatorio para dispersar — sin esto, cualquiera que se
+        // salte el modal del front (curl directo, DevTools, etc.) queda
+        // bloqueado igual, porque la sesión nunca llega a aal2 sin pasar
+        // por challengeAndVerify() con un factor TOTP verificado.
+        if (getAal(authHeader) !== "aal2") {
+          throw new Error("Para dispersar necesitás verificar tu código de autenticación (2FA). Configuralo en Seguridad si todavía no lo activaste.");
+        }
         if (profile.role !== "admin") {
           const check = await checkOnboardingApproved(adminClient, user.id);
           if (!check.approved) throw new Error(onboardingErrorMessage(check.status));
@@ -319,6 +350,10 @@ serve(async (req) => {
 
       // ── Dispersión ACH ─────────────────────────────────────────
       case "payout_ach": {
+        // Mismo control de 2FA que en payout_breb — ver comentario ahí.
+        if (getAal(authHeader) !== "aal2") {
+          throw new Error("Para dispersar necesitás verificar tu código de autenticación (2FA). Configuralo en Seguridad si todavía no lo activaste.");
+        }
         if (profile.role !== "admin") {
           const check = await checkOnboardingApproved(adminClient, user.id);
           if (!check.approved) throw new Error(onboardingErrorMessage(check.status));

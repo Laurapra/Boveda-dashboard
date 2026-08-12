@@ -22,6 +22,7 @@ import { MovimientosView }   from "./pages/Movimientos";
 import { TarifasView }       from "./pages/Tarifas";
 import { ReportesView }      from "./pages/Reportes";
 import { AdminView }         from "./pages/Admin";
+import { SeguridadView }     from "./pages/Seguridad";
 
 // Modal de creación de links/QR
 import { CreateLinkModal } from "./components/CreateLinkModal";
@@ -35,13 +36,14 @@ const COP = new Intl.NumberFormat("es-CO", {
 const PAGE_INFO: Record<ViewKey, { title: string; sub: string }> = {
   home:        { title: "Inicio",              sub: "Bienvenido al portal Ramplix" },
   billeteras:  { title: "Mis billeteras",       sub: "Gestiona tus cuentas en diferentes divisas" },
-  movimientos: { title: "Movimientos",          sub: "Historial de dispersiones realizadas" },
+  movimientos: { title: "Dispersar",            sub: "Historial de dispersiones realizadas" },
   cuentas:     { title: "Beneficiarios",        sub: "Gestiona los beneficiarios de tus dispersiones" },
   cuenta:      { title: "Estado de Cuenta",     sub: "Movimientos, comisiones y reportes financieros" },
   tarifas:     { title: "Mis tarifas",          sub: "Comisiones y costos por operación" },
   reportes:    { title: "Reportes",             sub: "Descarga reportes en PDF o XML" },
   onboarding:  { title: "Onboarding",           sub: "Registro único de tu comercio" },
   admin:       { title: "Panel de Administración", sub: "Gestiona usuarios y tarifas" },
+  seguridad:   { title: "Seguridad",            sub: "Verificación en dos pasos (2FA)" },
 };
 
 export default function App() {
@@ -169,6 +171,7 @@ export default function App() {
           {view === "cuentas"     && <CuentasView     onToast={addToast} />}
           {view === "tarifas"     && <TarifasView />}
           {view === "reportes"    && <ReportesView    fmt={fmt} />}
+          {view === "seguridad"   && <SeguridadView    onToast={addToast} />}
 
         </main>
       </div>

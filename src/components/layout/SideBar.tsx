@@ -12,7 +12,8 @@ export type ViewKey =
   | "tarifas"
   | "reportes"
   | "admin"
-  | "onboarding";
+  | "onboarding"
+  | "seguridad";
 
 interface Props {
   active: ViewKey;
@@ -47,7 +48,7 @@ const NAV: NavItem[] = [
     icon: Ico(<><rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 3H8a2 2 0 00-2 2v2h12V5a2 2 0 00-2-2z" /><circle cx="16" cy="14" r="1" fill="currentColor" /></>),
   },
   {
-    key: "movimientos", label: "Movimientos", section: "Operaciones",
+    key: "movimientos", label: "Dispersar", section: "Operaciones",
     icon: Ico(<path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4" strokeLinecap="round" strokeLinejoin="round" />),
   },
   {
@@ -69,6 +70,10 @@ const NAV: NavItem[] = [
   {
     key: "onboarding", label: "Onboarding",
     icon: Ico(<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" strokeLinecap="round" strokeLinejoin="round" />),
+  },
+  {
+    key: "seguridad", label: "Seguridad",
+    icon: Ico(<><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z" strokeLinejoin="round" /><path d="M9 12l2 2 4-4" strokeLinecap="round" strokeLinejoin="round" /></>),
   },
   {
     key: "admin", label: "Panel Admin", section: "Administración",

@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabase";
 import { useAuthStore } from "../store/authStore";
 import { useBeneficiaries, type Beneficiary, type BenAccount } from "../hooks/useBeneficiaries";
 import { sendPayoutBreb, sendPayoutAch, getBankCodes, lookupBrebKey } from "../lib/bepayClient";
+import { TwoFactorPrompt } from "../components/TwoFactorPrompt";
 import type { ToastType } from "../types";
 
 interface Props {
@@ -342,12 +343,25 @@ export const MovimientosView: React.FC<Props> = ({ fmt, onToast }) => {
     };
   }, [selectedCta]);
 
-  const handleConfirmar = async () => {
+  // handleConfirmar solo valida y abre el paso de 2FA — el envío real
+  // (executeSend) se dispara recién cuando TwoFactorPrompt confirma el
+  // código. La verificación real que importa pasa del lado del servidor
+  // (bepay-payouts exige el claim aal2 en el JWT), esto es solo el paso que
+  // eleva la sesión a aal2 antes de llamar a la API.
+  const [twoFAOpen, setTwoFAOpen] = useState(false);
+
+  const handleConfirmar = () => {
     if (!selectedBen || !selectedCta || rawMonto < 1000) return;
     if (selectedCta.account_type === "Bre-B" && lookup && !lookup.verified) {
       onToast("error", "Titular no verificado", "No se pudo confirmar el titular de esta llave. Revisa el dato antes de continuar.");
       return;
     }
+    setTwoFAOpen(true);
+  };
+
+  const executeSend = async () => {
+    setTwoFAOpen(false);
+    if (!selectedBen || !selectedCta || rawMonto < 1000) return;
 
     setSaving(true);
     try {
@@ -909,6 +923,12 @@ export const MovimientosView: React.FC<Props> = ({ fmt, onToast }) => {
             </button>
           </div>
         </div>
+
+        <TwoFactorPrompt
+          isOpen={twoFAOpen}
+          onClose={() => setTwoFAOpen(false)}
+          onVerified={executeSend}
+        />
       </div>
     );
   }
