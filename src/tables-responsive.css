@@ -11,11 +11,25 @@
     overflow-x: auto !important;
     overflow-y: hidden !important;
     -webkit-overflow-scrolling: touch;
+    width: 100%;
   }
 
-  /* Tables: set minimum width so all columns show */
+  /* Tables: set width auto + minimum width for all columns */
   table {
-    min-width: 700px !important;
+    width: auto !important;
+    min-width: 100% !important;
+    width: auto !important;
+  }
+
+  /* Ensure table has actual content width, not compressed */
+  table {
+    display: table;
+  }
+
+  /* Force columns to not shrink */
+  table th,
+  table td {
+    display: table-cell !important;
   }
 
   /* Table header: sticky and readable */
@@ -25,20 +39,20 @@
     z-index: 10;
   }
 
-  /* Table cells: readable on mobile */
+  /* Table cells: readable on mobile, no text wrapping */
   table th,
   table td {
     white-space: nowrap;
     font-size: 12px;
+    padding: 10px 12px !important;
   }
 
   table th {
-    padding: 10px 12px !important;
     font-size: 11px !important;
   }
 
   table td {
-    padding: 9px 12px !important;
+    font-size: 12px !important;
   }
 }
 
