@@ -4,6 +4,7 @@ import { useAuthStore } from "../store/authStore";
 import { supabase } from "../lib/supabase";
 import { Input } from "../components/ui/Input";
 import Logo from "../assets/Logo.png";
+import "./Login.css";
 
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;

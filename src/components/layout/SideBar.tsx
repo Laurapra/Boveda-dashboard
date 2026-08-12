@@ -83,61 +83,37 @@ export const Sidebar: React.FC<Props> = ({ active, onNav, theme, onToggleTheme }
     ?.split(" ").slice(0, 2).map((n) => n[0]).join("").toUpperCase() ?? "??";
 
   return (
-    <aside style={{
-      width: "248px", flexShrink: 0,
-      background: "var(--surface)",
-      borderRight: "1px solid var(--border)",
-      display: "flex", flexDirection: "column",
-      height: "100vh", position: "sticky", top: 0,
-    }}>
-
-      {/* ── Logo real de la empresa ── */}
-      <div style={{ display: "flex", alignItems: "center", gap: "11px", padding: "20px 20px 18px", borderBottom: "1px solid var(--border)" }}>
-        <div style={{ width: "36px", height: "36px", borderRadius: "9px", overflow: "hidden", flexShrink: 0 }}>
-          <img src={Logo} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+    <>
+      {/* Header */}
+      <div className="sidebar-header">
+        <div className="sidebar-logo">
+          <img src={Logo} alt="Logo" />
         </div>
-        <div>
-          <div style={{ fontWeight: 700, fontSize: "15px", letterSpacing: "-.2px" }}>RAMPLIX</div>
-          <div style={{ fontSize: "10.5px", color: "var(--t3)", letterSpacing: ".3px" }}>Portal · Ramplix</div>
+        <div className="sidebar-brand">
+          <div className="sidebar-brand-title">RAMPLIX</div>
+          <div className="sidebar-brand-subtitle">Portal · Ramplix</div>
         </div>
       </div>
 
-      {/* ── Nav ── */}
-      <nav style={{ flex: 1, overflowY: "auto", padding: "10px 10px 0" }}>
+      {/* Navigation */}
+      <nav className="sidebar-nav">
         {NAV.filter((item) => item.key !== "admin" || user?.role === "admin").map((item) => {
           const isActive = active === item.key;
           return (
             <React.Fragment key={item.key}>
               {item.section && (
-                <div style={{ fontSize: "10px", fontWeight: 600, color: "var(--t3)", padding: "14px 10px 4px", letterSpacing: ".07em", textTransform: "uppercase" }}>
+                <div className="sidebar-section">
                   {item.section}
                 </div>
               )}
               <button
+                className={`sidebar-item ${isActive ? "active" : ""}`}
                 onClick={() => onNav(item.key)}
-                style={{
-                  display: "flex", alignItems: "center", gap: "10px",
-                  padding: "9px 10px", width: "100%",
-                  border: "none", cursor: "pointer",
-                  fontSize: "13px", textAlign: "left",
-                  borderRadius: "var(--radius-sm)",
-                  transition: "background .1s, color .1s",
-                  background: isActive ? "var(--accent-dim)" : "transparent",
-                  color: isActive ? "var(--accent)" : "var(--t2)",
-                  fontWeight: isActive ? 500 : 400,
-                  position: "relative",
-                  marginBottom: "1px",
-                }}
               >
-                {isActive && (
-                  <span style={{ position: "absolute", left: 0, top: "50%", transform: "translateY(-50%)", width: "3px", height: "18px", background: "var(--accent)", borderRadius: "0 3px 3px 0" }} />
-                )}
-                {item.icon}
-                <span style={{ flex: 1 }}>{item.label}</span>
+                <span className="sidebar-item-icon">{item.icon}</span>
+                <span className="sidebar-item-label">{item.label}</span>
                 {item.badge !== undefined && (
-                  <span style={{ background: "var(--accent)", color: "#fff", borderRadius: "20px", fontSize: "10px", padding: "1px 7px", fontWeight: 700 }}>
-                    {item.badge}
-                  </span>
+                  <span className="sidebar-item-badge">{item.badge}</span>
                 )}
               </button>
             </React.Fragment>
@@ -145,11 +121,11 @@ export const Sidebar: React.FC<Props> = ({ active, onNav, theme, onToggleTheme }
         })}
       </nav>
 
-      {/* ── Footer ── */}
-      <div style={{ borderTop: "1px solid var(--border)", padding: "12px" }}>
+      {/* Footer */}
+      <div className="sidebar-footer">
         <button
+          className="sidebar-theme-btn"
           onClick={onToggleTheme}
-          style={{ display: "flex", alignItems: "center", gap: "9px", width: "100%", padding: "8px 10px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--elevated)", color: "var(--t2)", fontSize: "12.5px", fontWeight: 500, marginBottom: "8px", cursor: "pointer", transition: ".14s" }}
         >
           {theme === "dark" ? (
             <>
@@ -169,20 +145,16 @@ export const Sidebar: React.FC<Props> = ({ active, onNav, theme, onToggleTheme }
           )}
         </button>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px", borderRadius: "var(--radius-sm)" }}>
-          <div style={{ width: "30px", height: "30px", borderRadius: "8px", background: "linear-gradient(135deg, #2dd4bf, var(--accent))", display: "grid", placeItems: "center", fontWeight: 700, fontSize: "12px", color: "#fff", flexShrink: 0 }}>
-            {initials}
-          </div>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: "12.5px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {user?.full_name ?? "Usuario"}
-            </div>
-            <div style={{ fontSize: "11px", color: "var(--t3)" }}>{user?.role}</div>
+        <div className="sidebar-user">
+          <div className="sidebar-user-avatar">{initials}</div>
+          <div className="sidebar-user-info">
+            <div className="sidebar-user-name">{user?.full_name ?? "Usuario"}</div>
+            <div className="sidebar-user-role">{user?.role}</div>
           </div>
           <button
+            className="sidebar-logout-btn"
             onClick={signOut}
             title="Cerrar sesión"
-            style={{ width: "28px", height: "28px", borderRadius: "7px", display: "grid", placeItems: "center", color: "var(--t3)", border: "1px solid var(--border)", background: "none", cursor: "pointer", flexShrink: 0 }}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
               <path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" strokeLinecap="round" strokeLinejoin="round" />
@@ -190,6 +162,6 @@ export const Sidebar: React.FC<Props> = ({ active, onNav, theme, onToggleTheme }
           </button>
         </div>
       </div>
-    </aside>
+    </>
   );
 };

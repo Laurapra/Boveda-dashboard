@@ -1,6 +1,8 @@
 // src/App.tsx
 import { useState, useEffect } from "react";
 import "./index.css";
+import "./styles.css";
+import "./components/layout/Layout.css";
 
 import { useAuthStore } from "./store/authStore";
 import { Login }    from "./pages/Login";
@@ -50,8 +52,16 @@ export default function App() {
   const [theme, setTheme]           = useState<"dark" | "light">("dark");
   const { toasts, addToast, removeToast } = useToast();
   const [createLinkOpen, setCreateLinkOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
-  useEffect(() => { loadSession(); }, []);
+  useEffect(() => {
+    loadSession();
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -101,61 +111,67 @@ export default function App() {
 
   // ── Dashboard ──
   return (
-    <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
-      <Sidebar
-        active={view}
-        onNav={setView}
-        theme={theme}
-        onToggleTheme={toggleTheme}
-      />
+    <>
+      <div className="app-container">
+        {/* Sidebar */}
+        <div className={`sidebar ${sidebarOpen ? "open" : ""}`}>
+          <Sidebar
+            active={view}
+            onNav={(v) => { setView(v); setSidebarOpen(false); }}
+            theme={theme}
+            onToggleTheme={toggleTheme}
+          />
+        </div>
 
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
+        {/* Overlay for mobile */}
+        {isMobile && sidebarOpen && (
+          <div
+            className="sidebar-overlay visible"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
 
-        {/* Topbar */}
-        <header style={{
-          position: "sticky", top: 0, zIndex: 30,
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "13px 26px",
-          background: "color-mix(in srgb, var(--bg) 86%, transparent)",
-          backdropFilter: "blur(12px)",
-          borderBottom: "1px solid var(--border)",
-          flexShrink: 0,
-        }}>
-          <div>
-            <div style={{ fontSize: "15px", fontWeight: 600, letterSpacing: "-.2px" }}>
-              {PAGE_INFO[view].title}
-            </div>
-            <div style={{ fontSize: "12px", color: "var(--t3)", marginTop: "1px" }}>
-              {PAGE_INFO[view].sub}
-            </div>
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--surface)", fontSize: "13px", fontWeight: 500, color: "var(--t2)" }}>
-              <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "var(--success)", boxShadow: "0 0 0 3px var(--success-dim)" }} />
-              Mesa P2P · Principal
-            </div>
+        {/* Main Content */}
+        <div className="main-content">
+          {/* Topbar */}
+          <header className="topbar">
             <button
-              onClick={() => setCreateLinkOpen(true)}
-              style={{
-                display: "inline-flex", alignItems: "center", gap: "7px",
-                padding: "9px 14px", borderRadius: "var(--radius-sm)",
-                fontWeight: 600, fontSize: "13px",
-                background: "var(--accent)", color: "#fff",
-                border: "none", cursor: "pointer",
-                boxShadow: "0 6px 16px -8px var(--accent-ring)",
-              }}
+              className="topbar-menu-btn"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              title="Toggle menu"
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="15" height="15">
-                <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
+                <line x1="3" y1="6" x2="21" y2="6" strokeLinecap="round" />
+                <line x1="3" y1="12" x2="21" y2="12" strokeLinecap="round" />
+                <line x1="3" y1="18" x2="21" y2="18" strokeLinecap="round" />
               </svg>
-              Crear Link
             </button>
-          </div>
-        </header>
 
-        {/* Canvas */}
-        <main style={{ flex: 1, overflowY: "auto", padding: "22px 26px" }}>
+            <div>
+              <div className="topbar-title">{PAGE_INFO[view].title}</div>
+              <div className="topbar-subtitle">{PAGE_INFO[view].sub}</div>
+            </div>
+
+            <div className="topbar-right">
+              <div className="topbar-status">
+                <span className="topbar-status-indicator" />
+                Mesa P2P · Principal
+              </div>
+              <button
+                className="topbar-action-btn"
+                onClick={() => setCreateLinkOpen(true)}
+                title="Crear Link"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="15" height="15">
+                  <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+                </svg>
+                <span>Crear Link</span>
+              </button>
+            </div>
+          </header>
+
+          {/* Canvas */}
+          <main className="canvas">
 
           {/* Páginas existentes */}
           {view === "home"       && <HomeView         fmt={fmt} onToast={addToast} />}
@@ -170,7 +186,8 @@ export default function App() {
           {view === "tarifas"     && <TarifasView />}
           {view === "reportes"    && <ReportesView    fmt={fmt} />}
 
-        </main>
+          </main>
+        </div>
       </div>
 
       {/* Modal de creación de link/QR de pago */}
@@ -181,6 +198,6 @@ export default function App() {
       />
 
       <ToastContainer toasts={toasts} onRemove={removeToast} />
-    </div>
+    </>
   );
 }

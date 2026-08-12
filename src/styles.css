@@ -1,0 +1,329 @@
+/* src/styles.css */
+/* ════════════════════════════════════════════════════════════════════ */
+/* Reusable Component Styles                                            */
+/* ════════════════════════════════════════════════════════════════════ */
+
+/* ──────────────────────────────────────────────────────────────────── */
+/* CARDS & CONTAINERS                                                   */
+/* ──────────────────────────────────────────────────────────────────── */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-xl);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-base);
+}
+
+.card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow);
+}
+
+.card-sm {
+  padding: var(--space-lg);
+  border-radius: var(--radius-sm);
+}
+
+.card-lg {
+  padding: var(--space-2xl);
+  border-radius: var(--radius-lg);
+}
+
+/* ──────────────────────────────────────────────────────────────────── */
+/* BUTTONS                                                              */
+/* ──────────────────────────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-lg);
+  font-weight: 600;
+  font-size: 13px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  transition: all var(--transition-fast);
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: white;
+  box-shadow: 0 6px 16px -8px var(--accent-ring);
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+  box-shadow: 0 8px 20px -6px var(--accent-ring);
+}
+
+.btn-primary:active {
+  transform: scale(0.98);
+}
+
+.btn-secondary {
+  background: var(--elevated);
+  color: var(--t1);
+  border: 1px solid var(--border);
+}
+
+.btn-secondary:hover {
+  background: var(--surface);
+  border-color: var(--border-strong);
+}
+
+.btn-ghost {
+  background: none;
+  color: var(--accent);
+  border: none;
+}
+
+.btn-ghost:hover {
+  background: var(--accent-dim);
+}
+
+.btn-sm {
+  padding: var(--space-sm) var(--space-md);
+  font-size: 12px;
+}
+
+.btn-lg {
+  padding: var(--space-lg) var(--space-xl);
+  font-size: 14px;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ──────────────────────────────────────────────────────────────────── */
+/* BADGES & TAGS                                                       */
+/* ──────────────────────────────────────────────────────────────────── */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+.badge-primary {
+  background: var(--accent);
+  color: white;
+}
+
+.badge-success {
+  background: var(--success-dim);
+  color: var(--success);
+}
+
+.badge-warning {
+  background: var(--warning-dim);
+  color: var(--warning);
+}
+
+.badge-error {
+  background: var(--error-dim);
+  color: var(--error);
+}
+
+.badge-info {
+  background: var(--info-dim);
+  color: var(--info);
+}
+
+/* ──────────────────────────────────────────────────────────────────── */
+/* FORM ELEMENTS                                                        */
+/* ──────────────────────────────────────────────────────────────────── */
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-lg);
+}
+
+.form-label {
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--t1);
+}
+
+.form-input {
+  width: 100%;
+  padding: var(--space-md) var(--space-lg);
+  font-size: 13px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--t1);
+}
+
+.form-input::placeholder {
+  color: var(--t3);
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
+.form-error {
+  padding: var(--space-md) var(--space-lg);
+  background: var(--error-dim);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--error);
+}
+
+/* ──────────────────────────────────────────────────────────────────── */
+/* TYPOGRAPHY UTILITIES                                                 */
+/* ──────────────────────────────────────────────────────────────────── */
+
+.text-primary {
+  color: var(--t1);
+  font-weight: 600;
+}
+
+.text-secondary {
+  color: var(--t2);
+  font-weight: 500;
+}
+
+.text-tertiary {
+  color: var(--t3);
+  font-weight: 400;
+}
+
+.text-accent {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.text-success {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.text-error {
+  color: var(--error);
+  font-weight: 600;
+}
+
+.text-warning {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+.text-sm { font-size: 12px; }
+.text-base { font-size: 13px; }
+.text-lg { font-size: 15px; }
+.text-xl { font-size: 17px; }
+.text-2xl { font-size: 20px; }
+
+.font-weight-normal { font-weight: 400; }
+.font-weight-medium { font-weight: 500; }
+.font-weight-semibold { font-weight: 600; }
+.font-weight-bold { font-weight: 700; }
+
+/* ──────────────────────────────────────────────────────────────────── */
+/* SPACING UTILITIES                                                    */
+/* ──────────────────────────────────────────────────────────────────── */
+
+.gap-xs { gap: var(--space-xs); }
+.gap-sm { gap: var(--space-sm); }
+.gap-md { gap: var(--space-md); }
+.gap-lg { gap: var(--space-lg); }
+.gap-xl { gap: var(--space-xl); }
+.gap-2xl { gap: var(--space-2xl); }
+
+.px-sm { padding-left: var(--space-sm); padding-right: var(--space-sm); }
+.px-md { padding-left: var(--space-md); padding-right: var(--space-md); }
+.px-lg { padding-left: var(--space-lg); padding-right: var(--space-lg); }
+.px-xl { padding-left: var(--space-xl); padding-right: var(--space-xl); }
+
+.py-sm { padding-top: var(--space-sm); padding-bottom: var(--space-sm); }
+.py-md { padding-top: var(--space-md); padding-bottom: var(--space-md); }
+.py-lg { padding-top: var(--space-lg); padding-bottom: var(--space-lg); }
+.py-xl { padding-top: var(--space-xl); padding-bottom: var(--space-xl); }
+
+.mt-sm { margin-top: var(--space-sm); }
+.mt-md { margin-top: var(--space-md); }
+.mt-lg { margin-top: var(--space-lg); }
+.mt-xl { margin-top: var(--space-xl); }
+
+.mb-sm { margin-bottom: var(--space-sm); }
+.mb-md { margin-bottom: var(--space-md); }
+.mb-lg { margin-bottom: var(--space-lg); }
+.mb-xl { margin-bottom: var(--space-xl); }
+
+/* ──────────────────────────────────────────────────────────────────── */
+/* LAYOUT UTILITIES                                                     */
+/* ──────────────────────────────────────────────────────────────────── */
+
+.flex { display: flex; }
+.flex-col { display: flex; flex-direction: column; }
+.flex-row { display: flex; flex-direction: row; }
+
+.items-start { align-items: flex-start; }
+.items-center { align-items: center; }
+.items-end { align-items: flex-end; }
+
+.justify-start { justify-content: flex-start; }
+.justify-center { justify-content: center; }
+.justify-end { justify-content: flex-end; }
+.justify-between { justify-content: space-between; }
+
+.w-full { width: 100%; }
+.max-w-full { max-width: 100%; }
+
+.rounded { border-radius: var(--radius); }
+.rounded-sm { border-radius: var(--radius-sm); }
+.rounded-lg { border-radius: var(--radius-lg); }
+
+/* ──────────────────────────────────────────────────────────────────── */
+/* RESPONSIVE UTILITIES                                                 */
+/* ──────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .card {
+    padding: var(--space-lg);
+  }
+
+  .btn {
+    padding: var(--space-md) var(--space-md);
+    font-size: 12px;
+  }
+
+  .text-xl { font-size: 15px; }
+  .text-2xl { font-size: 18px; }
+
+  .hidden-mobile {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .card {
+    padding: var(--space-md);
+  }
+
+  .btn {
+    padding: var(--space-sm) var(--space-md);
+    width: 100%;
+  }
+
+  .form-input {
+    padding: var(--space-md) var(--space-md);
+  }
+}
