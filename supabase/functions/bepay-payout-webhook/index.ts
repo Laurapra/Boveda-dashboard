@@ -115,12 +115,29 @@ serve(async (req) => {
 
     // ── Buscar la dispersión local por bepay_ide (mismo id que devolvió
     // bepay-payouts al crearla — ver extractPayoutId en ese archivo) ──────
-    const { data: txRow } = await adminClient
+    const selectCols = "id, user_id, amount, comision_total, tarifa_aplicada";
+    let { data: txRow } = await adminClient
       .from("bepay_transactions")
-      .select("id, user_id, amount, comision_total, tarifa_aplicada")
+      .select(selectCols)
       .eq("bepay_ide", String(payoutId))
       .eq("type", "payout")
-      .single();
+      .maybeSingle();
+
+    // Bepay a veces manda en el webhook el id del PAGO INDIVIDUAL en vez del
+    // id del LOTE que guardamos como bepay_ide (confirmado con un caso real:
+    // guardamos bepay_ide del lote 620536, pero llegó un webhook con id
+    // 644695 — que resultó ser el id de payouts[0] DENTRO de ese lote). Como
+    // cada dispersión nuestra manda un solo pago por lote, alcanza con
+    // buscar ese id en el primer elemento del array guardado en raw_response.
+    if (!txRow) {
+      const fallback = await adminClient
+        .from("bepay_transactions")
+        .select(selectCols)
+        .eq("type", "payout")
+        .filter("raw_response->payouts->0->>id", "eq", String(payoutId))
+        .maybeSingle();
+      txRow = fallback.data;
+    }
 
     if (!txRow) {
       console.warn("[bepay-payout-webhook] No se encontró dispersión local para id:", payoutId);

@@ -23,10 +23,17 @@ async function getBepayToken(): Promise<string> {
   return json.data;
 }
 
-function validateAmount(amount: unknown): number {
+// Tope por transacción — configurable por canal porque Bre-B tiene un límite
+// propio, mucho más alto que el de ACH (que se queda en el tope general de
+// $50.000.000). No es un acumulado ni tiene ventana de tiempo: aplica a cada
+// dispersión individual por separado.
+const MAX_AMOUNT_DEFAULT = 50_000_000;
+const MAX_AMOUNT_BREB = 12_110_000_000;
+
+function validateAmount(amount: unknown, maxAmount: number = MAX_AMOUNT_DEFAULT): number {
   const n = Number(amount);
   if (!Number.isInteger(n) || n < 1000) throw new Error("Monto mínimo: $1.000 COP");
-  if (n > 50000000) throw new Error("Monto máximo: $50.000.000 COP");
+  if (n > maxAmount) throw new Error(`Monto máximo por dispersión: $${maxAmount.toLocaleString("es-CO")} COP`);
   return n;
 }
 
@@ -99,17 +106,22 @@ async function checkOnboardingApproved(
   adminClient: ReturnType<typeof createClient>,
   userId: string
 ): Promise<{ approved: boolean; status: string | null }> {
+  // maybeSingle (no single): un usuario solo tiene fila en UNA de las dos
+  // tablas (pn o emp), nunca en ambas — con single() la consulta a la tabla
+  // que no le corresponde siempre devuelve 406 (0 filas), quedando como
+  // "error" en los logs aunque no rompe nada (ver ob = pnRes.data ||
+  // empRes.data abajo). Puro ruido que tapaba errores reales.
   const pnRes = await adminClient
     .from("onboarding_pn")
     .select("status")
     .eq("user_id", userId)
-    .single();
+    .maybeSingle();
 
   const empRes = await adminClient
     .from("onboarding_emp")
     .select("status")
     .eq("user_id", userId)
-    .single();
+    .maybeSingle();
 
   const ob = pnRes.data || empRes.data;
   if (!ob) return { approved: false, status: null };
@@ -264,7 +276,7 @@ serve(async (req) => {
         }
 
         const key = sanitize(payload?.key, 100);
-        const amount = validateAmount(payload?.amount);
+        const amount = validateAmount(payload?.amount, MAX_AMOUNT_BREB);
         const concept = sanitize(payload?.concept, 100);
         // Banco real identificado por la API al verificar la llave (lookup_key),
         // enviado desde el frontend. Si no viene, se guarda null en vez de un texto fijo.

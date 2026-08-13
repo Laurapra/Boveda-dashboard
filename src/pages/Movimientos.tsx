@@ -6,6 +6,7 @@ import { useBeneficiaries, type Beneficiary, type BenAccount } from "../hooks/us
 import { sendPayoutBreb, sendPayoutAch, getBankCodes, lookupBrebKey } from "../lib/bepayClient";
 import { TwoFactorPrompt } from "../components/TwoFactorPrompt";
 import type { ToastType } from "../types";
+import RamplixWordmark from "../assets/ramplix-wordmark.png";
 import "./Movimientos.css";
 
 interface Props {
@@ -28,6 +29,7 @@ interface BepayTx {
   account_key: string | null;
   tarifa_aplicada: number | null;
   comision_total: number | null;
+  reference: string | null;
   created_at: string;
 }
 
@@ -149,6 +151,11 @@ export const MovimientosView: React.FC<Props> = ({ fmt, onToast }) => {
   const tarifaFijo = user?.tarifa_enviar ?? 1190;
   const tarifaVariable = user?.tarifa_variable ?? 0.0012;
 
+  // Tope por dispersión Bre-B — solo aplica a ese canal, ACH se queda con el
+  // límite general del servidor ($50.000.000). Mismo valor que MAX_AMOUNT_BREB
+  // en bepay-payouts/index.ts; esto es solo para avisar antes de intentar
+  // enviar, el bloqueo real está del lado del servidor.
+  const MAX_MONTO_BREB = 12_110_000_000;
   const rawMonto = parseInt(monto.replace(/\D/g, "")) || 0;
   const comision = rawMonto > 0 ? calcComisionLocal(rawMonto, tarifaFijo, tarifaVariable) : null;
   const dispersiones = txns.filter((t) => t.type === "payout");
@@ -184,7 +191,7 @@ export const MovimientosView: React.FC<Props> = ({ fmt, onToast }) => {
     setLoading(true);
     let q = supabase
       .from("bepay_transactions")
-      .select("id, bepay_ide, type, amount, concept, status, ben_name, ben_doc_type, ben_doc_number, account_type, bank_name, account_key, tarifa_aplicada, comision_total, created_at")
+      .select("id, bepay_ide, type, amount, concept, status, ben_name, ben_doc_type, ben_doc_number, account_type, bank_name, account_key, tarifa_aplicada, comision_total, reference, created_at")
       .order("created_at", { ascending: false })
       .limit(300);
     if (!isAdmin) q = q.eq("user_id", user.id);
@@ -357,6 +364,10 @@ export const MovimientosView: React.FC<Props> = ({ fmt, onToast }) => {
       onToast("error", "Titular no verificado", "No se pudo confirmar el titular de esta llave. Revisa el dato antes de continuar.");
       return;
     }
+    if (selectedCta.account_type === "Bre-B" && rawMonto > MAX_MONTO_BREB) {
+      onToast("error", "Monto máximo superado", "Una dispersión Bre-B no puede superar " + fmt(MAX_MONTO_BREB) + ".");
+      return;
+    }
     setTwoFAOpen(true);
   };
 
@@ -425,6 +436,7 @@ export const MovimientosView: React.FC<Props> = ({ fmt, onToast }) => {
         account_key: selectedCta.account_key,
         tarifa_aplicada: tarifaFijo,
         comision_total: comision ? comision.total : null,
+        reference,
         created_at: nowISOString(),
       });
       setVista("exito");
@@ -452,135 +464,172 @@ export const MovimientosView: React.FC<Props> = ({ fmt, onToast }) => {
     setFilterHasta("");
   };
 
+  // Comprobante con el mismo diseño del que ya usan (tarjeta clara con
+  // De/Para/Monto/Moneda/Estado/Referencia) — solo cambia que acá los datos
+  // salen de la transacción real guardada en bepay_transactions, no de Bepay
+  // directamente.
   const handleDownloadReceipt = async (tx: BepayTx) => {
     try {
       const { default: jsPDF } = await import("jspdf");
 
-      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a5" });
+      const PAGE_W = 148;
+      const PAGE_H = 210;
+      const CENTER = PAGE_W / 2;
+      const NAVY: [number, number, number] = [30, 27, 75];
+      const GRAY: [number, number, number] = [140, 140, 165];
+      const BG: [number, number, number] = [238, 241, 247];
+      const DOT: [number, number, number] = [205, 207, 224];
 
-      doc.setFillColor(26, 26, 24);
-      doc.rect(0, 0, 148, 26, "F");
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(8);
-      doc.text("GLOBAL COIN SAS · RAMPLIX", 10, 10);
-      doc.setFontSize(13);
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: [PAGE_W, PAGE_H] });
+
+      // ── Fondo ──
+      doc.setFillColor(...BG);
+      doc.rect(0, 0, PAGE_W, PAGE_H, "F");
+
+      // ── Título + fecha ──
+      doc.setTextColor(...NAVY);
       doc.setFont("helvetica", "bold");
-      doc.text("Comprobante de Dispersión", 10, 19);
+      doc.setFontSize(17);
+      doc.text("Comprobante de envío", CENTER, 22, { align: "center" });
 
-      const statusLbl =
-        tx.status === "APPROVED" || tx.status === "COMPLETED"
-          ? "COMPLETADO"
-          : tx.status === "PENDING"
-          ? "PENDIENTE"
-          : "RECHAZADO";
-      const statusRgb: [number, number, number] =
-        tx.status === "APPROVED" || tx.status === "COMPLETED"
-          ? [15, 110, 86]
-          : tx.status === "PENDING"
-          ? [133, 79, 11]
-          : [163, 45, 45];
-
-      doc.setTextColor(26, 26, 24);
+      const d = new Date(tx.created_at);
+      const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+      let hours = d.getHours();
+      const ampm = hours >= 12 ? "p. m." : "a. m.";
+      hours = hours % 12 || 12;
+      const minutes = String(d.getMinutes()).padStart(2, "0");
+      const fechaStr = `${d.getDate()} de ${MESES[d.getMonth()]}, ${hours}:${minutes} ${ampm}`;
       doc.setFont("helvetica", "normal");
+      doc.setFontSize(10.5);
+      doc.text(fechaStr, CENTER, 29, { align: "center" });
 
-      let y = 36;
-      doc.setFontSize(9);
-      doc.setTextColor(138, 137, 129);
-      doc.text("Estado", 10, y);
+      // ── Monto grande ──
+      const montoFmt = new Intl.NumberFormat("es-CO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(tx.amount);
       doc.setFont("helvetica", "bold");
-      doc.setTextColor(statusRgb[0], statusRgb[1], statusRgb[2]);
-      doc.text(statusLbl, 40, y);
+      doc.setFontSize(29);
+      doc.text(`$${montoFmt} COP`, CENTER, 43, { align: "center" });
 
-      y += 8;
-      doc.setFont("helvetica", "normal");
-      doc.setTextColor(138, 137, 129);
-      doc.text("ID de operación", 10, y);
-      doc.setTextColor(26, 26, 24);
-      doc.setFont("courier", "normal");
-      doc.setFontSize(7.5);
-      doc.text(tx.bepay_ide || tx.id, 40, y);
+      // ── Tarjeta blanca ──
+      const cardX = 12;
+      const cardW = PAGE_W - cardX * 2;
+      const cardY = 56;
+      const padX = 10;
+      const labelX = cardX + padX;
+      const valueRightX = cardX + cardW - padX;
 
-      y += 8;
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(9);
-      doc.setTextColor(138, 137, 129);
-      doc.text("Fecha", 10, y);
-      doc.setTextColor(26, 26, 24);
-      doc.text(
-        new Date(tx.created_at).toLocaleDateString("es-CO", { day: "2-digit", month: "long", year: "numeric" }) +
-          " · " +
-          new Date(tx.created_at).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }),
-        40,
-        y
-      );
+      // Datos del beneficiario ("Para") — el tipo de cuenta y la llave/cuenta
+      // se apilan igual que en el modelo, solo mostrando lo que aplique.
+      const paraLines = [tx.ben_name || "—", tx.account_type || null, tx.bank_name || null];
+      if (tx.account_key) {
+        const isBreb = tx.account_type === "Bre-B";
+        paraLines.push(isBreb && !tx.account_key.startsWith("@") ? `@${tx.account_key}` : tx.account_key);
+      }
+      const paraLinesFiltered = paraLines.filter((l): l is string => !!l);
 
-      y += 12;
-      doc.setDrawColor(230, 230, 225);
-      doc.line(10, y, 138, y);
+      const senderName = user?.full_name || "—";
+      const estadoLbl = statusLabelFn(tx.status);
+      const referencia = tx.reference || tx.bepay_ide || tx.id;
 
-      y += 10;
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(26, 26, 24);
-      doc.text("Datos del beneficiario", 10, y);
+      // Alto dinámico según cuántas líneas tenga "Para" — se calcula contando
+      // las mismas filas y separadores que se van a dibujar abajo, para que
+      // la tarjeta nunca quede corta ni con espacio de más.
+      const rowH = 7.2;
+      const sectionGap = 5;
+      const topPad = 11;
+      const bottomPad = 7;
+      const rowsCount = 1 /* De */ + paraLinesFiltered.length /* Para */ + 2 /* Monto, Moneda */ + 1 /* Estado */ + 1 /* Referencia */;
+      const gapsCount = 4; // separadores: De|Para, Para|Monto, Monto|Estado, Estado|Referencia
+      const cardH = topPad + bottomPad + rowH * rowsCount + sectionGap * gapsCount;
 
-      const rows: [string, string][] = [
-        ["Nombre", tx.ben_name || "—"],
-        ["Documento", (tx.ben_doc_type || "") + " " + (tx.ben_doc_number || "")],
-        ["Tipo de cuenta", tx.account_type || "—"],
-        ["Banco / Entidad", tx.bank_name || "—"],
-        ["Llave / Número", tx.account_key || "—"],
-      ];
+      doc.setFillColor(255, 255, 255);
+      doc.roundedRect(cardX, cardY, cardW, cardH, 3, 3, "F");
 
-      rows.forEach((row) => {
-        y += 8;
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(9);
-        doc.setTextColor(138, 137, 129);
-        doc.text(row[0], 10, y);
-        doc.setTextColor(26, 26, 24);
-        doc.setFont(row[0].indexOf("Llave") >= 0 ? "courier" : "helvetica", "normal");
-        doc.text(row[1], 55, y);
-      });
+      let y = cardY + topPad;
 
-      y += 12;
-      doc.line(10, y, 138, y);
-
-      y += 10;
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(9);
-      doc.setTextColor(138, 137, 129);
-      doc.text("Monto enviado", 10, y);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(11);
-      doc.setTextColor(26, 26, 24);
-      doc.text(fmt(tx.amount), 138, y, { align: "right" });
-
-      if (tx.comision_total) {
-        y += 8;
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(9);
-        doc.setTextColor(138, 137, 129);
-        doc.text("Comisión", 10, y);
-        doc.setTextColor(26, 26, 24);
-        doc.text(fmt(tx.comision_total), 138, y, { align: "right" });
-
-        y += 9;
-        doc.setDrawColor(26, 26, 24);
-        doc.line(10, y, 138, y);
-        y += 8;
+      const drawLabel = (label: string, atY: number) => {
         doc.setFont("helvetica", "bold");
-        doc.setFontSize(12);
-        doc.text("Total debitado", 10, y);
-        doc.setTextColor(163, 45, 45);
-        doc.text(fmt(tx.amount + tx.comision_total), 138, y, { align: "right" });
+        doc.setFontSize(9.5);
+        doc.setTextColor(...GRAY);
+        doc.text(label, labelX, atY);
+      };
+      const drawValue = (value: string, atY: number) => {
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10.5);
+        doc.setTextColor(...NAVY);
+        doc.text(value, valueRightX, atY, { align: "right" });
+      };
+      const drawDots = (atY: number) => {
+        doc.setDrawColor(...DOT);
+        doc.setLineDashPattern([0.6, 1], 0);
+        doc.line(labelX, atY, valueRightX, atY);
+        doc.setLineDashPattern([], 0);
+      };
+
+      // De
+      drawLabel("De", y);
+      drawValue(senderName, y);
+      y += rowH;
+      drawDots(y - rowH / 2 + 2);
+      y += sectionGap;
+
+      // Para — el label solo va junto a la primera línea, el resto se apila
+      drawLabel("Para", y);
+      paraLinesFiltered.forEach((line, i) => drawValue(line, y + rowH * i));
+      y += rowH * paraLinesFiltered.length;
+      drawDots(y - rowH / 2 + 2);
+      y += sectionGap;
+
+      // Monto / Moneda
+      drawLabel("Monto", y);
+      drawValue(new Intl.NumberFormat("es-CO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(tx.amount), y);
+      y += rowH;
+      drawLabel("Moneda", y);
+      drawValue("COP", y);
+      y += rowH;
+      drawDots(y - rowH / 2 + 2);
+      y += sectionGap;
+
+      // Estado
+      drawLabel("Estado", y);
+      drawValue(estadoLbl, y);
+      y += rowH;
+      drawDots(y - rowH / 2 + 2);
+      y += sectionGap;
+
+      // Referencia
+      drawLabel("Referencia", y);
+      drawValue(referencia, y);
+
+      // ── Logo Ramplix (pájaro + línea + wordmark, un solo PNG con fondo
+      // transparente para que se vea limpio sobre el fondo lila) ──
+      const logoY = cardY + cardH + 16;
+      try {
+        const logoResp = await fetch(RamplixWordmark);
+        const logoBlob = await logoResp.blob();
+        const logoDataUrl: string = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(logoBlob);
+        });
+        const imgH = 11;
+        const imgW = imgH * (422 / 110); // proporción real del PNG
+        doc.addImage(logoDataUrl, "PNG", CENTER - imgW / 2, logoY - 8, imgW, imgH);
+      } catch {
+        // Si falla la carga del logo (offline, CORS, etc.) se sigue sin él —
+        // el comprobante no debe fallar por esto.
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(15);
+        doc.setTextColor(...NAVY);
+        doc.text("RAMPLIX", CENTER, logoY, { align: "center" });
       }
 
+      // ── Footer ──
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(7);
-      doc.setTextColor(138, 137, 129);
-      doc.text("Global Coin SAS · Operado por Ramplix", 10, 200);
-      doc.text("Este comprobante es de uso interno y respalda la operación realizada.", 10, 204);
+      doc.setFontSize(8);
+      doc.setTextColor(...GRAY);
+      doc.text("Pago procesado por BE MOVIL", CENTER, logoY + 14, { align: "center" });
+      doc.text("Este comprobante fue generado automáticamente por RAMPLIX", CENTER, logoY + 19, { align: "center" });
 
       doc.save("comprobante-" + (tx.bepay_ide || tx.id).slice(0, 12) + ".pdf");
       onToast("ok", "Comprobante generado", "Descarga completada");
@@ -593,10 +642,21 @@ export const MovimientosView: React.FC<Props> = ({ fmt, onToast }) => {
   const thStyle: React.CSSProperties = { padding: "9px 12px", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".5px", color: "var(--t3)", borderBottom: "1px solid var(--border)", textAlign: "left" };
   const inputStyle: React.CSSProperties = { width: "100%", padding: "9px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--bg)", color: "var(--t1)", fontSize: "13.5px", outline: "none" };
 
+  // Mismas palabras clave que _shared/balance.ts (isRejectedStatus) — Bepay
+  // no documenta todos los nombres de estado que puede mandar (DECLINED,
+  // FAILED, REJECTED, CANCELLED, etc.), así que se agrupan por palabra clave
+  // en vez de una lista cerrada. Antes solo reconocía DECLINED/FAILED, por
+  // eso un estado real como "REJECTED" se mostraba crudo en vez de
+  // "Rechazado" y no coincidía con el filtro.
+  const REJECTED_KEYWORDS = ["REJECT", "FAIL", "CANCEL", "DENIED", "ERROR", "DECLIN", "RECHAZ"];
+  function isRejectedLabel(s: string) {
+    const up = (s ?? "").toUpperCase();
+    return REJECTED_KEYWORDS.some((k) => up.includes(k));
+  }
   function statusLabelFn(s: string) {
     if (s === "APPROVED" || s === "COMPLETED") return "Completado";
     if (s === "PENDING") return "Pendiente";
-    if (s === "DECLINED" || s === "FAILED") return "Rechazado";
+    if (isRejectedLabel(s)) return "Rechazado";
     return s;
   }
   function statusColorFn(s: string) {
@@ -867,6 +927,11 @@ export const MovimientosView: React.FC<Props> = ({ fmt, onToast }) => {
                   style={{ ...inputStyle, paddingLeft: "26px" }}
                 />
               </div>
+              {selectedCta.account_type === "Bre-B" && rawMonto > MAX_MONTO_BREB ? (
+                <div style={{ fontSize: "11px", color: "var(--error)", marginTop: "6px" }}>
+                  Una dispersión Bre-B no puede superar {fmt(MAX_MONTO_BREB)}.
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -907,7 +972,7 @@ export const MovimientosView: React.FC<Props> = ({ fmt, onToast }) => {
                 !selectedCta ||
                 rawMonto < 1000 ||
                 saving ||
-                (selectedCta !== undefined && selectedCta.account_type === "Bre-B" && (lookingUp || (lookup !== null && !lookup.verified)))
+                (selectedCta !== undefined && selectedCta.account_type === "Bre-B" && (lookingUp || (lookup !== null && !lookup.verified) || rawMonto > MAX_MONTO_BREB))
               }
               style={{
                 padding: "9px 16px",
