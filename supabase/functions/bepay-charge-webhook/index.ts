@@ -181,7 +181,14 @@ serve(async (req) => {
         });
       }
 
-      const amount = Number(verifiedData.transaction_total ?? payload.transaction_total ?? 0);
+      // Math.round: Bepay a veces manda el monto con centavos (ej.
+      // "1911805.01") pero la columna "amount" es bigint (entero) — insertar
+      // el decimal crudo hacía fallar el INSERT completo con "invalid input
+      // syntax for type bigint" y la transacción se perdía sin guardarse en
+      // absoluto (confirmado con un caso real: pago de $1.911.805,01 el 28
+      // ago). Los pesos colombianos no manejan centavos en la práctica, así
+      // que redondear es seguro.
+      const amount = Math.round(Number(verifiedData.transaction_total ?? payload.transaction_total ?? 0));
 
       // Misma comisión fija que usa create_link/create_qr — sin esto, los
       // recaudos que llegan DIRECTO a la llave (sin pasar por un link/QR
