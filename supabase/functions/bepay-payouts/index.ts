@@ -279,7 +279,8 @@ serve(async (req) => {
         }
 
         const key = sanitize(payload?.key, 100);
-        const amount = validateAmount(payload?.amount, MAX_AMOUNT_BREB);
+        // ✅ Corregido
+        const amount = validateAmount(payload?.amount, profile.role === "admin" ? null : MAX_AMOUNT_DEFAULT);
         const concept = sanitize(payload?.concept, 100);
         // Banco real identificado por la API al verificar la llave (lookup_key),
         // enviado desde el frontend. Si no viene, se guarda null en vez de un texto fijo.
