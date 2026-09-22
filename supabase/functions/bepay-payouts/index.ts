@@ -298,13 +298,20 @@ serve(async (req) => {
         // alcanza, la operación se bloquea aquí mismo y nunca llega a Bepay.
         // El débito es atómico (ver debitBalanceIfSufficient): si el saldo no
         // alcanza, devuelve null y no se descontó nada.
-        const balanceAfterDebit = await debitBalanceIfSufficient(adminClient, user.id, totalADebitar);
-        if (balanceAfterDebit === null) {
-          const { data: profBal } = await adminClient.from("profiles").select("balance").eq("id", user.id).single();
-          const saldoDisponible = Number(profBal?.balance ?? 0);
-          throw new Error(
-            `Fondos insuficientes — el total a debitar es $${totalADebitar.toLocaleString("es-CO")} y tu saldo disponible es $${saldoDisponible.toLocaleString("es-CO")}.`
-          );
+        // ✅ Después — el admin salta la billetera interna y dispersa contra
+        // el saldo REAL de la cuenta Bepay (Bepay mismo rechaza si no alcanza).
+        // Cualquier otro usuario sigue limitado por su saldo interno como antes.
+        const isAdmin = profile.role === "admin";
+
+        if (!isAdmin) {
+          const balanceAfterDebit = await debitBalanceIfSufficient(adminClient, user.id, totalADebitar);
+          if (balanceAfterDebit === null) {
+            const { data: profBal } = await adminClient.from("profiles").select("balance").eq("id", user.id).single();
+            const saldoDisponible = Number(profBal?.balance ?? 0);
+            throw new Error(
+              `Fondos insuficientes — el total a debitar es $${totalADebitar.toLocaleString("es-CO")} y tu saldo disponible es $${saldoDisponible.toLocaleString("es-CO")}.`
+            );
+          }
         }
 
         const res = await fetch(BEPAY_BASE + "/payout/breb/send", {
@@ -318,9 +325,12 @@ serve(async (req) => {
         });
         const bepayResult = await res.json();
 
+        // ✅ Después
         // Bepay rechazó de plano la dispersión (nunca quedó PENDING) — se
-        // reintegra de inmediato lo que se descontó arriba.
-        if (!bepayResult.success) {
+        // reintegra de inmediato lo que se descontó arriba. Si era admin,
+        // nunca se descontó nada de su billetera interna, así que no hay
+        // nada que reintegrar.
+        if (!bepayResult.success && !isAdmin) {
           await creditBalance(adminClient, user.id, totalADebitar);
         }
 
@@ -389,13 +399,18 @@ serve(async (req) => {
 
         // ── Igual que en payout_breb: bloquear aquí si no alcanza el saldo,
         // antes de tocar a Bepay para nada.
-        const balanceAfterDebit = await debitBalanceIfSufficient(adminClient, user.id, totalADebitar);
-        if (balanceAfterDebit === null) {
-          const { data: profBal } = await adminClient.from("profiles").select("balance").eq("id", user.id).single();
-          const saldoDisponible = Number(profBal?.balance ?? 0);
-          throw new Error(
-            `Fondos insuficientes — el total a debitar es $${totalADebitar.toLocaleString("es-CO")} y tu saldo disponible es $${saldoDisponible.toLocaleString("es-CO")}.`
-          );
+        // ✅ Después — mismo criterio que en payout_breb
+        const isAdmin = profile.role === "admin";
+
+        if (!isAdmin) {
+          const balanceAfterDebit = await debitBalanceIfSufficient(adminClient, user.id, totalADebitar);
+          if (balanceAfterDebit === null) {
+            const { data: profBal } = await adminClient.from("profiles").select("balance").eq("id", user.id).single();
+            const saldoDisponible = Number(profBal?.balance ?? 0);
+            throw new Error(
+              `Fondos insuficientes — el total a debitar es $${totalADebitar.toLocaleString("es-CO")} y tu saldo disponible es $${saldoDisponible.toLocaleString("es-CO")}.`
+            );
+          }
         }
 
         const res = await fetch(BEPAY_BASE + "/payout/ach/send", {
@@ -419,7 +434,7 @@ serve(async (req) => {
         });
         const bepayResult = await res.json();
 
-        if (!bepayResult.success) {
+        if (!bepayResult.success && !isAdmin) {
           await creditBalance(adminClient, user.id, totalADebitar);
         }
 
