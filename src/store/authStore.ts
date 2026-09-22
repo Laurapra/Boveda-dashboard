@@ -17,12 +17,14 @@ interface AuthState {
   ) => Promise<string | null>;
   signOut: () => Promise<void>;
   loadSession: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
+  subscribeToProfile: () => () => void;
 }
 
 export const useAuthStore = create<AuthState>()(
   // persist guarda el user en localStorage para no perder sesión al recargar
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
       session: false,
       loading: true,
@@ -101,6 +103,44 @@ export const useAuthStore = create<AuthState>()(
           set({ user: null, session: false });
         }
         set({ loading: false });
+      },
+
+      // Vuelve a leer el perfil completo desde la base — útil para llamar
+      // manualmente justo después de una acción que sabemos que cambia el
+      // saldo (ej. al volver de una dispersión), sin esperar al Realtime.
+      refreshProfile: async () => {
+        const current = get().user;
+        if (!current) return;
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", current.id)
+          .single();
+        if (profile) set({ user: profile });
+      },
+
+      // Se suscribe a cambios en la fila de profiles del usuario actual —
+      // cuando bepay-payouts descuenta o reintegra el saldo (debitBalanceIfSufficient/
+      // creditBalance), esto llega solo, sin recargar la página ni cerrar sesión.
+      // Devuelve la función de limpieza para desuscribirse en el unmount.
+      subscribeToProfile: () => {
+        const current = get().user;
+        if (!current) return () => {};
+
+        const channel = supabase
+          .channel("profile-balance-" + current.id)
+          .on(
+            "postgres_changes",
+            { event: "UPDATE", schema: "public", table: "profiles", filter: "id=eq." + current.id },
+            (payload) => {
+              set({ user: payload.new as User });
+            }
+          )
+          .subscribe();
+
+        return () => {
+          supabase.removeChannel(channel);
+        };
       },
     }),
     {

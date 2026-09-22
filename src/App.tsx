@@ -47,7 +47,8 @@ const PAGE_INFO: Record<ViewKey, { title: string; sub: string }> = {
 };
 
 export default function App() {
-  const { user, session, loading, loadSession, signOut } = useAuthStore();
+  // ✅ Después
+  const { user, session, loading, loadSession, signOut, subscribeToProfile } = useAuthStore();
   const [view, setView]             = useState<ViewKey>("home");
   const [theme, setTheme]           = useState<"dark" | "light">("dark");
   const { toasts, addToast, removeToast } = useToast();
@@ -55,6 +56,13 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => { loadSession(); }, []);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToProfile();
+    return () => {
+      unsubscribe();
+    };
+  }, [subscribeToProfile]);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
