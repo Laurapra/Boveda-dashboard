@@ -30,10 +30,13 @@ async function getBepayToken(): Promise<string> {
 const MAX_AMOUNT_DEFAULT = 50_000_000;
 const MAX_AMOUNT_BREB = 12_110_000_000;
 
-function validateAmount(amount: unknown, maxAmount: number = MAX_AMOUNT_DEFAULT): number {
+// ✅ Después — recibe el tope real como número; null = sin tope (admin)
+function validateAmount(amount: unknown, maxLimit: number | null = MAX_AMOUNT_DEFAULT): number {
   const n = Number(amount);
   if (!Number.isInteger(n) || n < 1000) throw new Error("Monto mínimo: $1.000 COP");
-  if (n > maxAmount) throw new Error(`Monto máximo por dispersión: $${maxAmount.toLocaleString("es-CO")} COP`);
+  if (maxLimit !== null && n > maxLimit) {
+    throw new Error("Monto máximo: $" + maxLimit.toLocaleString("es-CO") + " COP");
+  }
   return n;
 }
 
@@ -371,7 +374,8 @@ serve(async (req) => {
           if (!check.approved) throw new Error(onboardingErrorMessage(check.status));
         }
 
-        const amount = validateAmount(payload?.amount);
+        // ✅ Después
+        const amount = validateAmount(payload?.amount, profile.role === "admin");
         const concept = sanitize(payload?.concept, 100);
         if (!payload?.bank_code || !payload?.account_number || !payload?.account_type_code || !payload?.identification_type) {
           throw new Error("Faltan datos de la cuenta bancaria o del beneficiario");
