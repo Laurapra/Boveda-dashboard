@@ -910,7 +910,7 @@ useEffect(() => {
         <>
           <SecTitle text="Información laboral" />
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px" }}>
-            <div><label style={LS}>Ocupación <span style={{color:"var(--accent)"}}>*</span></label>
+            <div><label style={LS}>Nombre Completo <span style={{color:"var(--accent)"}}>*</span></label>
               <select value={pn.ocupacion} onChange={e => pf("ocupacion")(e.target.value)} style={IS}>
                 <option value="">Selecciona...</option>
                 <option>Empleado</option><option>Independiente / Emprendedor</option>

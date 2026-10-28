@@ -227,3 +227,11 @@ export async function syncPendingPayouts() {
 export async function syncMyPayouts() {
   return callBepay("bepay-payouts", "sync_my_payouts", {});
 }
+export async function createNequiPush(amount: number, cellphone: string, concept?: string, virtualKey?: string) {
+  return callBepay("bepay-nequi-push", "create_nequi_push", {
+    amount,
+    cellphone,
+    concept,
+    virtual_key: virtualKey,
+  });
+}
