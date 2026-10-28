@@ -925,7 +925,7 @@ useEffect(() => {
               <input value={pn.actividadEconomica} onChange={e => pf("actividadEconomica")(e.target.value)} placeholder="Ej. Comercio, servicios..." style={IS} />
             </div>
             <div><label style={LS}>Nombre Completo</label>
-              <input value={pn.empresa} onChange={e => pf("empresa")(e.target.value)} placeholder="Nombre de tu empresa" style={IS} />
+              <input value={pn.empresa} onChange={e => pf("empresa")(e.target.value)} placeholder="Nombre completo" style={IS} />
             </div>
             <div><label style={LS}>Cargo</label>
               <input value={pn.cargo} onChange={e => pf("cargo")(e.target.value)} placeholder="Ej. Gerente, Asesor..." style={IS} />
