@@ -910,7 +910,7 @@ useEffect(() => {
         <>
           <SecTitle text="Información laboral" />
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px" }}>
-            <div><label style={LS}>Nombre Completo <span style={{color:"var(--accent)"}}>*</span></label>
+            <div><label style={LS}>Ocupación <span style={{color:"var(--accent)"}}>*</span></label>
               <select value={pn.ocupacion} onChange={e => pf("ocupacion")(e.target.value)} style={IS}>
                 <option value="">Selecciona...</option>
                 <option>Empleado</option><option>Independiente / Emprendedor</option>
@@ -924,7 +924,7 @@ useEffect(() => {
             <div><label style={LS}>Actividad económica</label>
               <input value={pn.actividadEconomica} onChange={e => pf("actividadEconomica")(e.target.value)} placeholder="Ej. Comercio, servicios..." style={IS} />
             </div>
-            <div><label style={LS}>Empresa / negocio (si aplica)</label>
+            <div><label style={LS}>Nombre Completo</label>
               <input value={pn.empresa} onChange={e => pf("empresa")(e.target.value)} placeholder="Nombre de tu empresa" style={IS} />
             </div>
             <div><label style={LS}>Cargo</label>
